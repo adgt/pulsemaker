@@ -5,8 +5,8 @@ from IPython.display import display
 
 class ScheduleEditor:
     def __init__(self):
-        ### Initialization ###
 
+        ### Initialize ###
         ''' 
         I thoughtlists were a better option for our data structuring bc they can be easily manipulated. 
         After some reasearch, dictonaries seem to be a more natural choice bc the can be easily indexed by channel and
@@ -27,8 +27,8 @@ class ScheduleEditor:
         self._freqs = {}    # List of frequency values for internal use. 
                             # Format: {d0:freqval00, u0:freqval01, d1:freqval11 ...} freqvalx is a list with [time,phase] elems
 
-        self._current_qubit = 'q0'
-        self._current_chann = 'd0'
+        self._current_qubit = 'q0' 
+        self._current_chann = ['d0','d0','d0']  # list of current channel selections for [phase,freq,pulse]
         self._current_sample = 0
         self._current_phase = 0
         self._current_freq = 0
@@ -38,7 +38,7 @@ class ScheduleEditor:
         backend_input_lst = ['Armonk', 'Almaden', 'Casablanca']
         backend_qnum_lst = [1, 20, 20]
         backend_qubit_lst = ['q0']      # NOTE: must be updated as a function of selected backend
-        backend_chan_lst = ['d0','d1']       # NOTE: must be updated as a function of selected backend (includes d and u)
+        backend_chan_lst = ['d0','u0','d1']       # NOTE: must be updated as a function of selected backend (includes d and u)
         backend_cmap_lst = ['q0 <-> q1',
                             'q1 <-> q2']  # NOTE: This is a dummy coupling map. Need to import actual map from backend
                                           # This will be used for 2 qubit gates, therefore this list will replace the
@@ -240,10 +240,10 @@ class ScheduleEditor:
             elif b.name == 'shiftphase_btn':
                 phase = [self._current_sample, self._current_phase]
 
-                if self._current_chann in self._phases.keys():
+                if self._current_chann[0] in self._phases.keys():
                     # Check if channel is already present in _phases to append/replace new data
                     # Else, add channel to _phases.
-                    phase_array = self._phases[self._current_chann]
+                    phase_array = self._phases[self._current_chann[0]]
 
                     if phase_array[-1][0] == self._current_sample:
                         # If sample number hasn't changed, replace PhaseShift value
@@ -254,18 +254,39 @@ class ScheduleEditor:
                 else:
                     phase_array = [phase]
 
-                self._phases[self._current_chann] = phase_array
+                self._phases[self._current_chann[0]] = phase_array
+
+            elif b.name == 'shiftfreq_btn':
+                freq = [self._current_sample, self._current_freq]
+
+                if self._current_chann[1] in self._freqs.keys():
+                    # Check if channel is already present in _freqs to append/replace new data
+                    # Else, add channel to _freqs.
+                    freq_array = self._freqs[self._current_chann[1]]
+
+                    if freq_array[-1][0] == self._current_sample:
+                        # If sample number hasn't changed, replace Frequency value
+                        # Else, append new [time,FreqValue] item to _freqs
+                        freq_array[-1] = freq
+                    else:
+                        freq_array += [freq]
+                else:
+                    freq_array = [freq]
+
+                self._freqs[self._current_chann[1]] = freq_array
 
         append_btns = [nativegate_append_btn,shiftphase_append_btn,shiftfreq_append_btn,pulse_append_btn]
         for btn in append_btns:
             btn.on_click(update_schedule)
         
-
         # Update current Channels based on dropdown menus
 
-        def update_channels(dd):
-            #### PROBABLY NEED TO CREATE A LIST FOR CURRENT CHANNEL THAT CONTAINS SELECTION FOR PHASE, FREQ, PULSE ####
-            pass
+        def update_channels(*args):
+            self._current_chann = [shiftphase_chan_dd.value, shiftfreq_chan_dd.value, pulse_chan_dd.value]
+
+        chan_dds = [shiftphase_chan_dd, shiftfreq_chan_dd, pulse_chan_dd]
+        for chan in chan_dds:
+            chan.observe(update_channels, 'value')
 
 
         # TEST FIG OUT (NOTE: TO BE DELETED)
