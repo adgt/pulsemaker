@@ -32,6 +32,8 @@ class ScheduleEditor:
         self._current_sample = 0
         self._current_phase = 0
         self._current_freq = 0
+        self._current_pulse = np.array([])
+        self.dummy_pulse  = np.array([])   # DELETE after figuring out how to pass pulses from pulse-editor
 
         self.schedule = tuple()  # Final schedule (currently uses Qiskit's data structuring) 
 
@@ -233,9 +235,12 @@ class ScheduleEditor:
         # Update Schedule when append buttons are pressed
         def update_schedule(b):
             if b.name == 'nativegate_btn':
+
+                ## DELETE below (for debugg only)
                 print('Phases:',self._phases)
                 print('Frequencies:',self._freqs)
                 print('Pulses:',self._pulses)
+                ## DELETE above
 
             elif b.name == 'shiftphase_btn':
                 phase = [self._current_sample, self._current_phase]
@@ -275,12 +280,23 @@ class ScheduleEditor:
 
                 self._freqs[self._current_chann[1]] = freq_array
 
+            elif b.name == 'pulse_btn':
+                pulse = self.dummy_pulse 
+
+                if self._current_chann[2] in self._pulses.keys():
+                    # Check if channel is already present in _pulses to append new data
+                    # Else, add channel to _pulses.
+                    pulse_array = np.append(self._pulses[self._current_chann[2]],pulse)
+                else:
+                    pulse_array = pulse
+
+                self._pulses[self._current_chann[2]] = pulse_array
+
         append_btns = [nativegate_append_btn,shiftphase_append_btn,shiftfreq_append_btn,pulse_append_btn]
         for btn in append_btns:
             btn.on_click(update_schedule)
         
-        # Update current Channels based on dropdown menus
-
+        # Update current Channels based on values of dropdown menus
         def update_channels(*args):
             self._current_chann = [shiftphase_chan_dd.value, shiftfreq_chan_dd.value, pulse_chan_dd.value]
 
