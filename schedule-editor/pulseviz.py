@@ -4,6 +4,113 @@ import ipywidgets as widgets
 from IPython.display import display
 
 
+# Function to build qiskit schedule based on selected gate and backend
+def qiskit_gate_to_sched(backend_name, gate_name):
+    try:
+        from qiskit import QuantumCircuit
+        from qiskit import transpile, schedule as build_schedule
+        from qiskit.test.mock import FakeArmonk, FakeAlmaden
+
+    except ImportError:
+        pass
+
+    circuit = QuantumCircuit(1)
+    if gate_name == 'X':
+        circuit.x(0)
+    if gate_name == 'Y':
+        circuit.y(0)
+    if gate_name == 'Z':
+        circuit.z(0)
+    if gate_name == 'H':
+        circuit.h(0)
+
+    if backend_name == 'Armonk':
+        backend = FakeArmonk()
+    elif backend_name == 'Almaden':
+        backend = FakeAlmaden()
+    else:
+        '''TODO: There is no FakeCasablanca, so using FakeAlmaden for it right now'''
+        backend = FakeAlmaden()
+    
+    trans_circuit = transpile(circuit, backend)
+    return build_schedule(trans_circuit, backend)
+
+# Function to translate qiskit-schedule to scheduler-editor format
+def qiskit_to_schedviz(qiskit_sch, current_sample):
+    try:
+        from qiskit.pulse import Play, SetFrequency, ShiftPhase
+        from qiskit.pulse.channels import DriveChannel, ControlChannel
+
+    except ImportError:
+        pass
+    
+    phases = {}
+    freqs = {}
+    pulses = {}
+
+    for start_time, instruction in qiskit_sch.instructions:
+
+        if isinstance(instruction.channel, DriveChannel):
+            chan = 'd'+str(instruction.channel.index)
+        elif isinstance(instruction.channel, ControlChannel):
+            chan = 'u'+str(instruction.channel.index)
+        else:
+            '''TODO: Might need to add support for other channels, like measure, acquire, etc'''
+            pass
+
+        if isinstance(instruction, Play):
+            '''TODO: For Play instructions (pulses), 
+            Need to check that the last sample of each pulse matches the first sample of the next.
+            In general this could not be the case because there are also "Delay" Instructions that could be 
+            padding the pulse data in between consecutive Play instructions, so would need to fill in that missing data.
+            From what I've seen, when building schedules from native gates, no Delay Instructions are used, but
+            this might change in the future'''
+            pulse = np.array(instruction.pulse.samples)
+
+            if chan in pulses.keys():
+                pulses[chan] = np.append(pulses[chan],pulse)
+            else:
+                pulses[chan] = pulse
+
+        elif isinstance(instruction, ShiftPhase):
+            phase = [current_sample+start_time, instruction.phase]
+
+            if chan in phases.keys():
+                # Check if channel is already present in phases to append/replace new data
+                # Else, add channel to phases.
+                phase_array = phases[chan]
+                phase_array += phase         
+            else:
+                phase_array = [phase]
+
+            phases[chan] = phase_array
+
+    return phases, freqs, pulses
+
+'''
+elif b.name == 'shiftphase_btn':
+    phase = [self.samples, self._current_phase]
+
+    if self._current_chann[0] in self.phases.keys():
+        # Check if channel is already present in phases to append/replace new data
+        # Else, add channel to phases.
+        phase_array = self.phases[self._current_chann[0]]
+
+        if phase_array[-1][0] == self.samples:
+            # If sample number hasn't changed, replace PhaseShift value
+            # Else, append new [time,PhaseShift] item to phases
+            phase_array[-1] = phase
+        else:
+            phase_array += [phase]
+    else:
+        phase_array = [phase]
+
+    self.phases[self._current_chann[0]] = phase_array
+'''
+
+
+
+
 # Function to Update schedule plot
 def plot_sch(phases,freqs,pulses,samples):
     '''
@@ -30,12 +137,14 @@ def plot_sch(phases,freqs,pulses,samples):
     axs.set_xlabel('time t/dt')
     axs.set_ylabel('Amplitude')
     axs.set_xlim(0,samps)
-    axs.set_ylim(-1.1,1.1)
+    #axs.set_ylim(-1.1,1.1)
+    axs.set_ylim(-0.4,0.4)
     axs.step(t, i_sig, 'r')
     axs.fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
     axs.step(t, q_sig, 'b')
     axs.fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
 
+    # plot phases
     if 'd0' in phases.keys():
         phases_lst = phases['d0']
         for time in phases_lst:
@@ -43,6 +152,7 @@ def plot_sch(phases,freqs,pulses,samples):
                      fontsize=14, color='purple',
                      ha='center', va='center')
 
+    # plot frequencies
     if 'd0' in freqs.keys():
         freqs_lst = freqs['d0']
         for time in freqs_lst:
@@ -241,7 +351,21 @@ class ScheduleEditor:
             self._current_freq = 1e9*shiftfreq_input_fltxt.value
 
             if b.name == 'nativegate_btn':
-                pass
+                '''TODO: Will need to add conditionals here depending on the provider. Right now, everythin is qiskit
+                         so only calling qiskit_gate_to_sched() function to make translations'''
+                qiskit_gate_sch = qiskit_gate_to_sched(backend_input_dd.value,nativegate_input_dd.value)
+                phases, freqs, pulses = qiskit_to_schedviz(qiskit_gate_sch, self.samples)
+                self._current_pulse = pulses
+                for chan, pulse in pulses.items():
+                    if chan in self.pulses.keys():
+                        # Check if channel is already present in pulses to append new data
+                        # Else, add channel to pulses.
+                        pulse_array = np.append(self.pulses[chan],pulse)
+                    else:
+                        pulse_array = pulse
+                    self.pulses[chan] = pulse_array
+                    self.samples = len(pulse_array)
+                    
 
             elif b.name == 'shiftphase_btn':
                 phase = [self.samples, self._current_phase]
@@ -290,7 +414,6 @@ class ScheduleEditor:
                          always checking the length of the pulse array for each specific chan.
                 '''
 
-
                 pulse = self.dummy_pulse 
 
                 if self._current_chann[2] in self.pulses.keys():
@@ -301,7 +424,6 @@ class ScheduleEditor:
                     pulse_array = pulse
 
                 self.pulses[self._current_chann[2]] = pulse_array
-
                 self.samples = len(pulse_array)
 
             self.update()
