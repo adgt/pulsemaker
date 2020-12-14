@@ -149,7 +149,7 @@ class ScheduleEditor:
 
         # Floating Textbox for Phase Shift input
         '''TODO: Need to be able to pass multiples of np.pi or pi'''
-        shiftphase_input_fltxt = widgets.BoundedFloatText(value=0.0, min=0.0, max=2*np.pi, step=0.001,
+        shiftphase_input_fltxt = widgets.BoundedFloatText(value=0.0, min=0.0, max=1.0, step=0.001,
                                                            layout=widgets.Layout(width='245px'),
                                                            description='Phase [1/(2π)]:',
                                                            disabled=False)
@@ -174,7 +174,7 @@ class ScheduleEditor:
                                           widgets.HBox([shiftphase_chan_dd,shiftphase_append_btn])])
 
         # Floating Textbox for Frequency value input
-        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=0.0, min=0.0, max=5.5, step=0.001,
+        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.75, min=4.0, max=5.5, step=0.001,
                                                           layout=widgets.Layout(width='245px'),
                                                           description='Freq [GHz]:',
                                                           disabled=False)
@@ -237,8 +237,8 @@ class ScheduleEditor:
         def update_schedule(b):
             '''NOTE: Not sure if I need _current_phase, _current_freq or if I should just use 
                      the values from the widgets directly:'''
-            self._current_phase = shiftphase_input_fltxt.value
-            self._current_freq = shiftfreq_input_fltxt.value
+            self._current_phase = 2*np.pi*shiftphase_input_fltxt.value
+            self._current_freq = 1e9*shiftfreq_input_fltxt.value
 
             if b.name == 'nativegate_btn':
                 pass
