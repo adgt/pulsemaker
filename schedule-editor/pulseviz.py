@@ -235,6 +235,11 @@ class ScheduleEditor:
 
         # Update Schedule when append buttons are pressed
         def update_schedule(b):
+            '''NOTE: Not sure if I need _current_phase, _current_freq or if I should just use 
+                     the values from the widgets directly:'''
+            self._current_phase = shiftphase_input_fltxt.value
+            self._current_freq = shiftfreq_input_fltxt.value
+
             if b.name == 'nativegate_btn':
                 pass
 
