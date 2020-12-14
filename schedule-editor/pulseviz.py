@@ -3,33 +3,90 @@ import matplotlib.pyplot as plt
 import ipywidgets as widgets
 from IPython.display import display
 
+
+# Function to Update schedule plot
+def plot_sch(phases,freqs,pulses,samples):
+    '''
+    TODO: Need to generalize this function to strip each channel and create a separate subplot in the following order:
+          d0,u0,d1,u1,...dn,un. Channels should share the x-axis, which means that if one channel has less samples than
+          another, then padding (0 values) need to be added so that all vectors match the length of the largest array
+    '''
+
+    # plot pulses
+    '''NOTE: Only plotting d0 right now. Need to generalize for all channels'''
+    
+    if not 'd0' in pulses.keys():
+        pulse_arr = np.array([0])
+    else:
+        pulse_arr = pulses.get('d0')
+
+    i_sig = np.real(pulse_arr)
+    q_sig = np.imag(pulse_arr)
+        
+    samps = i_sig.size
+    t = np.linspace(0,samps,samps)
+    
+    fig, axs = plt.subplots(figsize=(8.5,3))
+    axs.set_xlabel('time t/dt')
+    axs.set_ylabel('Amplitude')
+    axs.set_xlim(0,samps)
+    axs.set_ylim(-1.1,1.1)
+    axs.step(t, i_sig, 'r')
+    axs.fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
+    axs.step(t, q_sig, 'b')
+    axs.fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
+
+    if 'd0' in phases.keys():
+        phases_lst = phases['d0']
+        for time in phases_lst:
+            axs.text(x=time[0], y=0, s=r'$\circlearrowleft$',
+                     fontsize=14, color='purple',
+                     ha='center', va='center')
+
+    if 'd0' in freqs.keys():
+        freqs_lst = freqs['d0']
+        for time in freqs_lst:
+            axs.text(x=time[0], y=0, s=r'$\downarrow$',
+                     fontsize=14, color='forestgreen',
+                     ha='center', va='bottom')
+
+    '''
+    ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
+    print('Phases:',phases)
+    print('Frequencies:',freqs)
+    print('Pulses:',pulses)
+    print('Samples:',samples)
+    ### ### ### ### ### ### ### ###
+    '''
+
 class ScheduleEditor:
     def __init__(self):
 
         ### Initialize ###
         ''' 
-        I thoughtlists were a better option for our data structuring bc they can be easily manipulated. 
+        I thought lists were a better option for our data structuring bc they can be easily manipulated. 
         After some reasearch, dictonaries seem to be a more natural choice bc the can be easily indexed by channel and
-        merge/replace can be easily done with the in-place operator |=
+        merge/replace can be easily done.
 
-        self._pulses = [[str,np.array([])],]        # List of pulses for internal use. 
+        self.pulses = [[str,np.array([])],]        # List of pulses. 
                                                     # Format: [['chan_a',waveform0],['chan_b',waveform1],...] waveformx is a numpy array with pulse data
-        self._phases = [[str,np.array([[],[]])],]   # List of phase-shift values for internal use. 
+        self.phases = [[str,np.array([[],[]])],]   # List of phase-shift values. 
                                                     # Format: [['chan_a',phaseshift0],['chan_b',phaseshift1],...] phaseshiftx is a numpy array with times,phases
-        self._freqs = [[str,np.array([[],[]])],]    # List of frequency values for internal use. 
+        self.freqs = [[str,np.array([[],[]])],]    # List of frequency values for 
                                                     # Format: [['chan_a',freqval0],['chan_b',freqval1],...] freqvalx is a numpy array with times,frequencies
         '''
 
-        self._pulses = {}   # List of pulses for internal use. 
-                            # Format: {d0:waveform00, u0:waveform01, d1:waveform11 ...} waveformx is a numpy array with pulse data
-        self._phases = {}   # List of phase-shift values for internal use. 
-                            # Format: {d0:phaseshift00, u0:phaseshift01, d1:phaseshift11 ...} phaseshiftx is a list with [time,phase] elems
-        self._freqs = {}    # List of frequency values for internal use. 
-                            # Format: {d0:freqval00, u0:freqval01, d1:freqval11 ...} freqvalx is a list with [time,phase] elems
+        self.pulses = {}   # List of pulses. 
+                           # Format: {d0:waveform00, u0:waveform01, d1:waveform11 ...} waveformx is a numpy array with pulse data
+        self.phases = {}   # List of phase-shift values. 
+                           # Format: {d0:phaseshift00, u0:phaseshift01, d1:phaseshift11 ...} phaseshiftx is a list with [time,phase] elems
+        self.freqs = {}    # List of frequency values. 
+                           # Format: {d0:freqval00, u0:freqval01, d1:freqval11 ...} freqvalx is a list with [time,phase] elems
+        self.samples = 0   # Number of samples in schedule
+
 
         self._current_qubit = 'q0' 
         self._current_chann = ['d0','d0','d0']  # list of current channel selections for [phase,freq,pulse]
-        self._current_sample = 0
         self._current_phase = 0
         self._current_freq = 0
         self._current_pulse = np.array([])
@@ -49,62 +106,6 @@ class ScheduleEditor:
         schedule_input_lst = ['From Native Gate', 'Custom Schedule', 'From Variable']
         nativegate_input_lst = ['X','Y','Z','H','CX','CZ']
         pulse_input_lst = []
-
-        # Function to Update schedule plot
-        '''
-        def plot_schedule():
-
-            if not len(self._pulses):
-                i_sig = np.array([0])
-                q_sig = np.array([0])
-            else:
-                i_sig = np.real(my_schedule)
-                q_sig = np.imag(my_schedule)
-                
-            samps = i_sig.size
-            t = np.linspace(0,samps,samps)
-            
-            fig, axs = plt.subplots(figsize=(7.5,3))
-            axs.set_xlabel('time t/dt')
-            axs.set_ylabel('Amplitude')
-            axs.set_xlim(0,samps)
-            axs.set_ylim(-1.1,1.1)
-            axs.step(t, i_sig, 'r')
-            axs.fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
-            axs.step(t, q_sig, 'b')
-            axs.fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
-        '''
-
-        # Waveform plotting function (NOTE: TO BE DELETED)
-        def plot_wf(nativegate):
-            samples = 16
-            t = np.linspace(0,samples,samples)
-            
-            if nativegate == 'X':
-                i_sig = np.sin(2*np.pi*t)
-                q_sig = 0.001*np.cos(2*np.pi*t)
-            elif nativegate == 'Z':
-                i_sig = np.cos(2*np.pi*t)
-                q_sig = 0.001*np.sin(2*np.pi*t)
-            else:
-                i_sig = np.ones(t.size)
-                q_sig = np.ones(t.size)
-
-            i_amp = np.max(i_sig)
-            q_amp = np.max(q_sig)
-            fig, (ax0,ax1) = plt.subplots(1,2, figsize=(8, 4), sharex=True)
-            #fig, (ax0,ax1) = plt.subplots(1,2, sharex=True)
-            ax0.set_xlabel('time t/dt')
-            ax1.set_xlabel('time t/dt')
-            ax0.set_ylabel('In-Phase Amplitude')
-            ax1.set_ylabel('Quadrature Amplitude')
-            ax0.set_xlim(0,samples)
-            ax1.set_xlim(0,samples)
-            ax0.set_ylim(-(abs(i_amp)+0.1),abs(i_amp)+0.1)
-            ax1.set_ylim(-(abs(q_amp)+0.1),abs(q_amp)+0.1)
-            ax0.step(t, i_sig, 'r')
-            ax1.step(t, q_sig, 'b')
-            fig.tight_layout(pad=3.0)
 
         ### User Interface Components ###
 
@@ -173,9 +174,9 @@ class ScheduleEditor:
                                           widgets.HBox([shiftphase_chan_dd,shiftphase_append_btn])])
 
         # Floating Textbox for Frequency value input
-        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=0.0, min=0.0, max=2*np.pi, step=0.001,
+        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=0.0, min=0.0, max=5.5, step=0.001,
                                                           layout=widgets.Layout(width='245px'),
-                                                          description='Freq [Hz]:',
+                                                          description='Freq [GHz]:',
                                                           disabled=False)
 
          # Dropdown menu for channel selection to append Frequency value schedule
@@ -235,62 +236,70 @@ class ScheduleEditor:
         # Update Schedule when append buttons are pressed
         def update_schedule(b):
             if b.name == 'nativegate_btn':
-
-                ## DELETE below (for debugg only)
-                print('Phases:',self._phases)
-                print('Frequencies:',self._freqs)
-                print('Pulses:',self._pulses)
-                ## DELETE above
+                pass
 
             elif b.name == 'shiftphase_btn':
-                phase = [self._current_sample, self._current_phase]
+                phase = [self.samples, self._current_phase]
 
-                if self._current_chann[0] in self._phases.keys():
-                    # Check if channel is already present in _phases to append/replace new data
-                    # Else, add channel to _phases.
-                    phase_array = self._phases[self._current_chann[0]]
+                if self._current_chann[0] in self.phases.keys():
+                    # Check if channel is already present in phases to append/replace new data
+                    # Else, add channel to phases.
+                    phase_array = self.phases[self._current_chann[0]]
 
-                    if phase_array[-1][0] == self._current_sample:
+                    if phase_array[-1][0] == self.samples:
                         # If sample number hasn't changed, replace PhaseShift value
-                        # Else, append new [time,PhaseShift] item to _phases
+                        # Else, append new [time,PhaseShift] item to phases
                         phase_array[-1] = phase
                     else:
                         phase_array += [phase]
                 else:
                     phase_array = [phase]
 
-                self._phases[self._current_chann[0]] = phase_array
+                self.phases[self._current_chann[0]] = phase_array
 
             elif b.name == 'shiftfreq_btn':
-                freq = [self._current_sample, self._current_freq]
+                freq = [self.samples, self._current_freq]
 
-                if self._current_chann[1] in self._freqs.keys():
-                    # Check if channel is already present in _freqs to append/replace new data
-                    # Else, add channel to _freqs.
-                    freq_array = self._freqs[self._current_chann[1]]
+                if self._current_chann[1] in self.freqs.keys():
+                    # Check if channel is already present in freqs to append/replace new data
+                    # Else, add channel to freqs.
+                    freq_array = self.freqs[self._current_chann[1]]
 
-                    if freq_array[-1][0] == self._current_sample:
+                    if freq_array[-1][0] == self.samples:
                         # If sample number hasn't changed, replace Frequency value
-                        # Else, append new [time,FreqValue] item to _freqs
+                        # Else, append new [time,FreqValue] item to freqs
                         freq_array[-1] = freq
                     else:
                         freq_array += [freq]
                 else:
                     freq_array = [freq]
 
-                self._freqs[self._current_chann[1]] = freq_array
+                self.freqs[self._current_chann[1]] = freq_array
 
             elif b.name == 'pulse_btn':
+                '''
+                TODO: Need to add padding option (add dotted line of where schedule stands on each channel?)
+                         Best way might be to add padding for visualization in the plot_sch function, but keep
+                         arrays for each channel true to what the user is adding. The challenge is then keeping
+                         track of the "current_sample" for each channel individually, but might be as simple as
+                         always checking the length of the pulse array for each specific chan.
+                '''
+
+
                 pulse = self.dummy_pulse 
 
-                if self._current_chann[2] in self._pulses.keys():
-                    # Check if channel is already present in _pulses to append new data
-                    # Else, add channel to _pulses.
-                    pulse_array = np.append(self._pulses[self._current_chann[2]],pulse)
+                if self._current_chann[2] in self.pulses.keys():
+                    # Check if channel is already present in pulses to append new data
+                    # Else, add channel to pulses.
+                    pulse_array = np.append(self.pulses[self._current_chann[2]],pulse)
                 else:
                     pulse_array = pulse
 
-                self._pulses[self._current_chann[2]] = pulse_array
+                self.pulses[self._current_chann[2]] = pulse_array
+
+                self.samples = len(pulse_array)
+
+            self.update()
 
         append_btns = [nativegate_append_btn,shiftphase_append_btn,shiftfreq_append_btn,pulse_append_btn]
         for btn in append_btns:
@@ -304,14 +313,32 @@ class ScheduleEditor:
         for chan in chan_dds:
             chan.observe(update_channels, 'value')
 
+        # Plot schedule when outputs change
+        '''
+        plot_sch_out = widgets.interactive_output(plot_sch,
+                                                  {'phases':widgets.fixed(self.phases),
+                                                   'freqs':widgets.fixed(self.freqs),
+                                                   'pulses':widgets.fixed(self.pulses),
+                                                   'samples':widgets.fixed(self.samples)})
+        '''
+
+        plot_sch_out = widgets.interactive(plot_sch,
+                                           phases=widgets.fixed(self.phases),
+                                           freqs=widgets.fixed(self.freqs),
+                                           pulses=widgets.fixed(self.pulses),
+                                           samples=widgets.fixed(self.samples))
+
+        self._plot_sch = plot_sch_out
 
         # TEST FIG OUT (NOTE: TO BE DELETED)
-        wf_fig_out = widgets.interactive_output(plot_wf, {'nativegate':nativegate_input_dd})
+        #wf_fig_out = widgets.interactive_output(plot_wf, {'nativegate':nativegate_input_dd})
 
-
-        schedule_editor = widgets.HBox([left_panel, wf_fig_out])
+        schedule_editor = widgets.HBox([left_panel, plot_sch_out])
 
         self._editor = schedule_editor
     
+    def update(self):
+        self._plot_sch.update()
+
     def _ipython_display_(self):
         display(self._editor)
