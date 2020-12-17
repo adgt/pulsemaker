@@ -79,34 +79,16 @@ def qiskit_to_schedviz(qiskit_sch, current_sample):
                 # Check if channel is already present in phases to append/replace new data
                 # Else, add channel to phases.
                 phase_array = phases[chan]
-                phase_array += phase         
+                phase_array += [phase]         
             else:
                 phase_array = [phase]
 
             phases[chan] = phase_array
 
+        '''TODO: isinstance(instruction, ShiftFrequency). 
+                 Haven't done it yet bc haven't seen this instruction in any of the native gates.'''
+
     return phases, freqs, pulses
-
-'''
-elif b.name == 'shiftphase_btn':
-    phase = [self.samples, self._current_phase]
-
-    if self._current_chann[0] in self.phases.keys():
-        # Check if channel is already present in phases to append/replace new data
-        # Else, add channel to phases.
-        phase_array = self.phases[self._current_chann[0]]
-
-        if phase_array[-1][0] == self.samples:
-            # If sample number hasn't changed, replace PhaseShift value
-            # Else, append new [time,PhaseShift] item to phases
-            phase_array[-1] = phase
-        else:
-            phase_array += [phase]
-    else:
-        phase_array = [phase]
-
-    self.phases[self._current_chann[0]] = phase_array
-'''
 
 
 
@@ -126,10 +108,12 @@ def plot_sch(phases,freqs,pulses,samples):
         pulse_arr = np.array([0])
     else:
         pulse_arr = pulses.get('d0')
+        if pulse_arr.size == 0:
+            pulse_arr = np.array([0])
 
     i_sig = np.real(pulse_arr)
     q_sig = np.imag(pulse_arr)
-        
+  
     samps = i_sig.size
     t = np.linspace(0,samps,samps)
     
@@ -355,7 +339,7 @@ class ScheduleEditor:
                          so only calling qiskit_gate_to_sched() function to make translations'''
                 qiskit_gate_sch = qiskit_gate_to_sched(backend_input_dd.value,nativegate_input_dd.value)
                 phases, freqs, pulses = qiskit_to_schedviz(qiskit_gate_sch, self.samples)
-                self._current_pulse = pulses
+
                 for chan, pulse in pulses.items():
                     if chan in self.pulses.keys():
                         # Check if channel is already present in pulses to append new data
@@ -365,6 +349,17 @@ class ScheduleEditor:
                         pulse_array = pulse
                     self.pulses[chan] = pulse_array
                     self.samples = len(pulse_array)
+
+                for chan, phase in phases.items():
+                    if chan in self.phases.keys():
+                        # Check if channel is already present in pulses to append new data
+                        # Else, add channel to pulses.
+                        '''TODO: Need to be careful here. Gotta check if there is phaseshift overlap bw last elem in self.phases
+                                 and the first elem being appended from the native gate to. The new one should replace old one'''
+                        phase_array = self.phases[chan] + phase
+                    else:
+                        phase_array = phase
+                    self.phases[chan] = phase_array
                     
 
             elif b.name == 'shiftphase_btn':
