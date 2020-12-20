@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 import ipywidgets as widgets
 from IPython.display import display
+
 
 
 # Function to build qiskit schedule based on selected gate and backend
@@ -101,33 +103,72 @@ def plot_sch(phases,freqs,pulses,samples):
           another, then padding (0 values) need to be added so that all vectors match the length of the largest array
     '''
 
+    # Check channels in phase and frequency dicts but not on pulse
+    # Create one-elem pulse array on those chans to avoid matplotlib error for missing data
+    phase_chans = set(phases.keys())
+    freq_chans = set(freqs.keys())
+    pulses_srt = pulses
+
+    for chan in (set.union(phase_chans,freq_chans)):
+        if chan not in pulses_srt:
+            pulses_srt[chan]=np.array([0])
+
+
     # plot pulses
-    '''NOTE: Only plotting d0 right now. Need to generalize for all channels'''
-    
-    if not 'd0' in pulses.keys():
+
+    '''DELETE BELOW Leaving temporarily for ref
+    if not pulses:
         pulse_arr = np.array([0])
     else:
         pulse_arr = pulses.get('d0')
         if pulse_arr.size == 0:
             pulse_arr = np.array([0])
+    '''
 
-    i_sig = np.real(pulse_arr)
-    q_sig = np.imag(pulse_arr)
-  
-    samps = i_sig.size
-    t = np.linspace(0,samps,samps)
-    
-    fig, axs = plt.subplots(figsize=(8.5,3))
-    axs.set_xlabel('time t/dt')
-    axs.set_ylabel('Amplitude')
-    axs.set_xlim(0,samps)
-    #axs.set_ylim(-1.1,1.1)
-    axs.set_ylim(-0.4,0.4)
-    axs.step(t, i_sig, 'r')
-    axs.fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
-    axs.step(t, q_sig, 'b')
-    axs.fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
+    labels = ['a','d','m','u'] # labels for different channels:
+                               # a: acquire, d: drive, m: measure, u: x-correlation
 
+    num_chans = len(pulses)
+    gs = gridspec.GridSpec(num_chans, 1)
+    ax = []
+
+    ''' 
+    To sort pulse dictionary, channel index values are calculated as follows:
+    indx[0][0] stores the type of channel: a, d, m, u. By using the index value of the 'labels' list, 
+    we know the position the channel holds within a given qubit. indx[0][1] stores the qubit value, so 
+    by multiplying by the length of the 'labels' list, we know where the qubit sits wrt the others.
+    by adding the two, we know where a given qubit channel should sit wrt to other channels.
+    ''' 
+    pulses_srt = sorted(pulses_srt.items(), 
+                    key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
+
+    fig = plt.subplots(figsize=(9,5))
+
+    for chan_num, chan in enumerate(pulses_srt):
+        if chan_num == 0:
+            ax.append(plt.subplot(gs[chan_num]))
+        else: 
+            ax.append(plt.subplot(gs[chan_num], sharex=ax[0]))
+        if chan_num < num_chans - 1:
+            plt.setp(ax[chan_num].get_xticklabels(), visible=False)
+        
+        # NOTE: Axis settings. Still need to decide how they should look like
+        ax[chan_num].text(0,0, chan[0], horizontalalignment='center',verticalalignment='center', fontweight='bold')
+        ax[chan_num].tick_params(axis='y', which='major', labelsize=7)
+        #ax[chan_num].tick_params(axis="y",direction="in", pad=-22)
+        #ax[chan_num].get_yaxis().set_ticks([])
+        #ax[chan_num].set_ylabel(chan+'  ', rotation=0, fontweight='bold')
+        
+        i_sig = np.real(chan[1])
+        q_sig = np.imag(chan[1])
+        samps = i_sig.size
+        t = np.linspace(0,samps,samps)
+        
+        ax[chan_num].step(t, i_sig, 'r')
+        ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
+        ax[chan_num].step(t, q_sig, 'b')
+        ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
+    '''
     # plot phases
     if 'd0' in phases.keys():
         phases_lst = phases['d0']
@@ -143,7 +184,8 @@ def plot_sch(phases,freqs,pulses,samples):
             axs.text(x=time[0], y=0, s=r'$\downarrow$',
                      fontsize=14, color='forestgreen',
                      ha='center', va='bottom')
-
+    '''
+    plt.subplots_adjust(hspace=.0)
     '''
     ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
     print('Phases:',phases)
