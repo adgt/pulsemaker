@@ -115,16 +115,6 @@ def plot_sch(phases,freqs,pulses,samples):
 
 
     # plot pulses
-
-    '''DELETE BELOW Leaving temporarily for ref
-    if not pulses:
-        pulse_arr = np.array([0])
-    else:
-        pulse_arr = pulses.get('d0')
-        if pulse_arr.size == 0:
-            pulse_arr = np.array([0])
-    '''
-
     labels = ['a','d','m','u'] # labels for different channels:
                                # a: acquire, d: drive, m: measure, u: x-correlation
 
@@ -168,32 +158,33 @@ def plot_sch(phases,freqs,pulses,samples):
         ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
         ax[chan_num].step(t, q_sig, 'b')
         ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
-    '''
+        
+
     # plot phases
-    if 'd0' in phases.keys():
-        phases_lst = phases['d0']
+    for chan_num, chan in enumerate(phases):
+        phases_lst = phases[chan]
         for time in phases_lst:
-            axs.text(x=time[0], y=0, s=r'$\circlearrowleft$',
+            ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
                      fontsize=14, color='purple',
                      ha='center', va='center')
 
     # plot frequencies
-    if 'd0' in freqs.keys():
-        freqs_lst = freqs['d0']
+    for chan_num, chan in enumerate(freqs):
+        freqs_lst = freqs[chan]
         for time in freqs_lst:
-            axs.text(x=time[0], y=0, s=r'$\downarrow$',
+            ax[chan_num].text(x=time[0], y=0, s=r'$\downarrow$',
                      fontsize=14, color='forestgreen',
                      ha='center', va='bottom')
-    '''
+    
     plt.subplots_adjust(hspace=.0)
-    '''
+    
     ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
     print('Phases:',phases)
     print('Frequencies:',freqs)
     print('Pulses:',pulses)
     print('Samples:',samples)
     ### ### ### ### ### ### ### ###
-    '''
+    
 
 class ScheduleEditor:
     def __init__(self):
@@ -402,7 +393,9 @@ class ScheduleEditor:
                     else:
                         phase_array = phase
                     self.phases[chan] = phase_array
-                    
+
+                '''NOTE: Don't have a for loop for freq.items() here bc pulses from native gates in qiskit don't contain
+                         that type of instruction. Might need to add later for other backends?'''
 
             elif b.name == 'shiftphase_btn':
                 phase = [self.samples, self._current_phase]
