@@ -60,8 +60,11 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
             '''TODO: Might need to add support for other channels, like measure, acquire, etc'''
             pass
         
-        chan_sample = current_samples[chan]
-
+        if chan in current_samples:
+            chan_sample = current_samples[chan]
+        else: 
+            chan_sample = 0
+            
         if isinstance(instruction, Play):
             '''TODO: For Play instructions (pulses), 
             Need to check that the last sample of each pulse matches the first sample of the next.
