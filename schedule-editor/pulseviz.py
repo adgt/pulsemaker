@@ -38,7 +38,7 @@ def qiskit_gate_to_sched(backend_name, gate_name):
     return build_schedule(trans_circuit, backend)
 
 # Function to translate qiskit-schedule to scheduler-editor format
-def qiskit_to_schedviz(qiskit_sch, current_sample):
+def qiskit_to_schedviz(qiskit_sch, current_samples):
     try:
         from qiskit.pulse import Play, SetFrequency, ShiftPhase
         from qiskit.pulse.channels import DriveChannel, ControlChannel
@@ -59,11 +59,13 @@ def qiskit_to_schedviz(qiskit_sch, current_sample):
         else:
             '''TODO: Might need to add support for other channels, like measure, acquire, etc'''
             pass
+        
+        chan_sample = current_samples[chan]
 
         if isinstance(instruction, Play):
             '''TODO: For Play instructions (pulses), 
             Need to check that the last sample of each pulse matches the first sample of the next.
-            In general this could not be the case because there are also "Delay" Instructions that could be 
+            In general this could not be the case because eventually we will add "Delay" Instructions that could be 
             padding the pulse data in between consecutive Play instructions, so would need to fill in that missing data.
             From what I've seen, when building schedules from native gates, no Delay Instructions are used, but
             this might change in the future'''
@@ -75,7 +77,7 @@ def qiskit_to_schedviz(qiskit_sch, current_sample):
                 pulses[chan] = pulse
 
         elif isinstance(instruction, ShiftPhase):
-            phase = [current_sample+start_time, instruction.phase]
+            phase = [chan_sample+start_time, instruction.phase]
 
             if chan in phases.keys():
                 # Check if channel is already present in phases to append/replace new data
@@ -93,32 +95,24 @@ def qiskit_to_schedviz(qiskit_sch, current_sample):
     return phases, freqs, pulses
 
 
-
-
 # Function to Update schedule plot
 def plot_sch(phases,freqs,pulses,samples):
-    '''
-    TODO: Need to generalize this function to strip each channel and create a separate subplot in the following order:
-          d0,u0,d1,u1,...dn,un. Channels should share the x-axis, which means that if one channel has less samples than
-          another, then padding (0 values) need to be added so that all vectors match the length of the largest array
-    '''
 
     # Check channels in phase and frequency dicts but not on pulse
     # Create one-elem pulse array on those chans to avoid matplotlib error for missing data
     phase_chans = set(phases.keys())
     freq_chans = set(freqs.keys())
-    pulses_srt = pulses
+    pulses_srt = pulses.copy()
 
     for chan in (set.union(phase_chans,freq_chans)):
         if chan not in pulses_srt:
             pulses_srt[chan]=np.array([0])
 
 
-    # plot pulses
     labels = ['a','d','m','u'] # labels for different channels:
                                # a: acquire, d: drive, m: measure, u: x-correlation
 
-    num_chans = len(pulses)
+    num_chans = len(pulses_srt)
     gs = gridspec.GridSpec(num_chans, 1)
     ax = []
 
@@ -132,9 +126,19 @@ def plot_sch(phases,freqs,pulses,samples):
     pulses_srt = sorted(pulses_srt.items(), 
                     key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
 
+    '''
+    phases_srt = sorted(phases.items(), 
+                    key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
+
+    freqs_srt = sorted(freqs.items(), 
+                    key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
+    '''
+
     fig = plt.subplots(figsize=(9,5))
 
     for chan_num, chan in enumerate(pulses_srt):
+
+        # plot pulses
         if chan_num == 0:
             ax.append(plt.subplot(gs[chan_num]))
         else: 
@@ -159,32 +163,33 @@ def plot_sch(phases,freqs,pulses,samples):
         ax[chan_num].step(t, q_sig, 'b')
         ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
         
+        # plot phases
+        if chan[0] in phases:
+            phases_lst = phases[chan[0]]
+            for time in phases_lst:           
+                ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
+                                  fontsize=14, color='purple',
+                                  ha='center', va='center')
 
-    # plot phases
-    for chan_num, chan in enumerate(phases):
-        phases_lst = phases[chan]
-        for time in phases_lst:
-            ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
-                     fontsize=14, color='purple',
-                     ha='center', va='center')
 
-    # plot frequencies
-    for chan_num, chan in enumerate(freqs):
-        freqs_lst = freqs[chan]
-        for time in freqs_lst:
-            ax[chan_num].text(x=time[0], y=0, s=r'$\downarrow$',
-                     fontsize=14, color='forestgreen',
-                     ha='center', va='bottom')
+        # plot frequencies
+        if chan[0] in freqs:
+            freqs_lst = freqs[chan[0]]
+            for time in freqs_lst:
+                ax[chan_num].text(x=time[0], y=0, s=r'$\downarrow$',
+                        fontsize=14, color='forestgreen',
+                        ha='center', va='bottom')
     
     plt.subplots_adjust(hspace=.0)
     
+    '''
     ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
     print('Phases:',phases)
     print('Frequencies:',freqs)
     print('Pulses:',pulses)
     print('Samples:',samples)
     ### ### ### ### ### ### ### ###
-    
+    '''
 
 class ScheduleEditor:
     def __init__(self):
@@ -203,13 +208,14 @@ class ScheduleEditor:
                                                     # Format: [['chan_a',freqval0],['chan_b',freqval1],...] freqvalx is a numpy array with times,frequencies
         '''
 
-        self.pulses = {}   # List of pulses. 
+        self.pulses = {}   # Dictionary of pulses. 
                            # Format: {d0:waveform00, u0:waveform01, d1:waveform11 ...} waveformx is a numpy array with pulse data
-        self.phases = {}   # List of phase-shift values. 
+        self.phases = {}   # Dictionary of phase-shift values. 
                            # Format: {d0:phaseshift00, u0:phaseshift01, d1:phaseshift11 ...} phaseshiftx is a list with [time,phase] elems
-        self.freqs = {}    # List of frequency values. 
+        self.freqs = {}    # Dictionary of frequency values. 
                            # Format: {d0:freqval00, u0:freqval01, d1:freqval11 ...} freqvalx is a list with [time,phase] elems
-        self.samples = 0   # Number of samples in schedule
+        self.samples = {}  # Dictionary of samples in schedule
+                           # Format: {d0:sampsval00, u0:samps01, d1:samps11 ...} sampsvalx is the value of last sample on channel x
 
 
         self._current_qubit = 'q0' 
@@ -381,7 +387,7 @@ class ScheduleEditor:
                     else:
                         pulse_array = pulse
                     self.pulses[chan] = pulse_array
-                    self.samples = len(pulse_array)
+                    self.samples[chan] = len(pulse_array)
 
                 for chan, phase in phases.items():
                     if chan in self.phases.keys():
@@ -398,14 +404,20 @@ class ScheduleEditor:
                          that type of instruction. Might need to add later for other backends?'''
 
             elif b.name == 'shiftphase_btn':
-                phase = [self.samples, self._current_phase]
+                if self._current_chann[0] in self.samples.keys():
+                    current_sample = self.samples[self._current_chann[0]]
+                else:
+                    current_sample = 0
+
+                phase = [current_sample, self._current_phase]
 
                 if self._current_chann[0] in self.phases.keys():
                     # Check if channel is already present in phases to append/replace new data
                     # Else, add channel to phases.
+                    
                     phase_array = self.phases[self._current_chann[0]]
 
-                    if phase_array[-1][0] == self.samples:
+                    if phase_array[-1][0] == current_sample:
                         # If sample number hasn't changed, replace PhaseShift value
                         # Else, append new [time,PhaseShift] item to phases
                         phase_array[-1] = phase
@@ -417,14 +429,19 @@ class ScheduleEditor:
                 self.phases[self._current_chann[0]] = phase_array
 
             elif b.name == 'shiftfreq_btn':
-                freq = [self.samples, self._current_freq]
+                if self._current_chann[1] in self.samples.keys():
+                    current_sample = self.samples[self._current_chann[1]]
+                else:
+                    current_sample = 0
+
+                freq = [current_sample, self._current_freq]
 
                 if self._current_chann[1] in self.freqs.keys():
                     # Check if channel is already present in freqs to append/replace new data
                     # Else, add channel to freqs.
                     freq_array = self.freqs[self._current_chann[1]]
 
-                    if freq_array[-1][0] == self.samples:
+                    if freq_array[-1][0] == current_sample:
                         # If sample number hasn't changed, replace Frequency value
                         # Else, append new [time,FreqValue] item to freqs
                         freq_array[-1] = freq
@@ -454,11 +471,11 @@ class ScheduleEditor:
                     pulse_array = pulse
 
                 self.pulses[self._current_chann[2]] = pulse_array
-                self.samples = len(pulse_array)
+                self.samples[self._current_chann[2]] = len(pulse_array)
 
             self.update()
 
-        append_btns = [nativegate_append_btn,shiftphase_append_btn,shiftfreq_append_btn,pulse_append_btn]
+        append_btns = [nativegate_append_btn, shiftphase_append_btn, shiftfreq_append_btn, pulse_append_btn]
         for btn in append_btns:
             btn.on_click(update_schedule)
         
