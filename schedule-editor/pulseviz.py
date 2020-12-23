@@ -6,25 +6,34 @@ from IPython.display import display
 
 # Function to generate qubit, channel and coupling map lists based on selected backend
 def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
+
+    try:
+        from qiskit.test.mock import FakeArmonk, FakeAlmaden
+
+    except ImportError:
+        pass
+
+    '''TODO: might be able to do this in a better way without having to do conditional checks for each backend name.'''
+    if backend_name == 'Armonk':
+        backend = FakeArmonk()
+    elif backend_name == 'Almaden':
+        backend = FakeAlmaden()
+    else:
+        '''TODO: There is no FakeCasablanca, so using FakeAlmaden for it right now'''
+        backend = FakeAlmaden()
+    
     '''
     TODO: When selecting back a backend that has less number of qubits than what has already been added to the schedule,
             the extra channels need to be cleared out so that the user doesn't run into issues when trying to run the schedule in the
             desired backend. Qiskit will throw an error if schedule has instructions in channels not available in that backend.
     '''
     
-    '''
-    TODO: Need to generate coupling map list based on the selected backend.
-    '''
-
-
-    qubit_lst = []
-    chan_lst = []
-    cmap_lst = []
-    gate_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
-
     backend_indx = backend_input_lst.index(backend_name)
     num_qbs = backend_qnum_lst[backend_indx]
 
+    # generate qubit_lst and chan_lst
+    qubit_lst = []
+    chan_lst = []
     for qb_num in range(num_qbs):
         qubit_lst.append('q'+str(qb_num))
         chan_lst.append('d'+str(qb_num))
@@ -37,8 +46,23 @@ def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
         if num_qbs > 1:
             chan_lst.append('u'+str(qb_num))
 
+    # generate gate list
+    gate_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
     if num_qbs == 1:
         gate_lst.pop()
+
+    # generate coupling map list
+    cmap_lst = backend.configuration().coupling_map
+    '''
+    TODO: this conditional below should be removed once there is a FakeCasablanca. right now just "mocking" the coupling map by taking
+          the cmap of the first 7 qubits of Almaden"
+    '''
+    if backend_name == 'Casablanca':
+        cmap_aux = []
+        for qb_pair in cmap_lst:
+            if qb_pair[0] <= 6 and qb_pair[1] <= 6:
+                cmap_aux.append(qb_pair)
+        cmap_lst = cmap_aux
 
     return qubit_lst, chan_lst, cmap_lst, gate_lst
 
@@ -296,12 +320,13 @@ class ScheduleEditor:
         TODO: Since I already have a function that returns the params below based on selected backend, might just call it here
               rather than doing this explicit initialization
         '''
-        backend_qubit_lst = ['q0']                # Updated as a function of selected backend
+        backend_qubit_lst = ['q0']               # Updated as a function of selected backend
         #backend_chan_lst = ['d0', 'u0', 'd1'] 
-        backend_chan_lst = ['d0']                 # Updated as a function of selected backend (includes d and u)
-        backend_cmap_lst = ['q5 <-> q6']          # NOTE: This is a dummy coupling map. Need to import actual map from backend
-                                                  # This will be used for 2 qubit gates, therefore this list will replace the
-                                                  # backend_qubit_lst in the dd widget when 2-qubit gates are selected (e.g. cx)
+        backend_chan_lst = ['d0']                # Updated as a function of selected backend (includes d and u)
+        backend_cmap_lst = None                  # Updated as a function of selected backend
+        backend_cmap_nms = None                  # Maps back_cmap_lst elems to strings that can be displayed in the dropdown menu
+                                                 # e.g. [2,3] maps to ['q2 -> q3']
+        
         nativegate_input_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
 
         '''
@@ -443,6 +468,12 @@ class ScheduleEditor:
         def update_dd_options(*args):
             current_backend = backend_input_dd.value
             backend_qubit_lst, backend_chan_lst, backend_cmap_lst, nativegate_input_lst = qiskit_backend_config(current_backend, backend_input_lst, backend_qnum_lst)
+
+            backend_cmap_nms = []
+            for qb_pair in backend_cmap_lst:
+                backend_cmap_nms.append('q'+str(qb_pair[0])+'->q'+str(qb_pair[1]))
+
+            print(backend_cmap_nms)
 
             nativegate_input_dd.options = nativegate_input_lst
             nativegate_qubit_dd.options = backend_qubit_lst
