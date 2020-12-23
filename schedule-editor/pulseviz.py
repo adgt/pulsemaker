@@ -4,10 +4,43 @@ from matplotlib import gridspec
 import ipywidgets as widgets
 from IPython.display import display
 
+# Function to generate qubit, channel and coupling map lists based on selected backend
+def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
+    '''
+    TODO: When selecting back a backend that has less number of qubits than what has already been added to the schedule,
+            the extra channels need to be cleared out so that the user doesn't run into issues when trying to run the schedule in the
+            desired backend. Qiskit will throw an error if schedule has instructions in channels not available in that backend.
+    '''
+
+    qubit_lst = []
+    chan_lst = []
+    cmap_lst = []
+    gate_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
+
+    backend_indx = backend_input_lst.index(backend_name)
+    num_qbs = backend_qnum_lst[backend_indx]
+
+    for qb_num in range(num_qbs):
+        qubit_lst.append('q'+str(qb_num))
+        chan_lst.append('d'+str(qb_num))
+        '''
+        TODO: Right now, I am just associating one u channel per qubit. This is NOT correct. Each qubit-qubit interaction has 
+                several control channels associated with it. Therefore, the right way to populate the available u channels is to
+                get the coupling map for the backend, and extract the u channels associated with each element in that coupling map
+                Currently trying to figure out how to do this. 
+        '''
+        if num_qbs > 1:
+            chan_lst.append('u'+str(qb_num))
+
+    if num_qbs == 1:
+        gate_lst.pop()
+
+    return qubit_lst, chan_lst, cmap_lst, gate_lst
 
 
 # Function to build qiskit schedule based on selected gate and backend
 def qiskit_gate_to_sched(backend_name, gate_name):
+    
     try:
         from qiskit import QuantumCircuit
         from qiskit import transpile, schedule as build_schedule
@@ -15,6 +48,11 @@ def qiskit_gate_to_sched(backend_name, gate_name):
 
     except ImportError:
         pass
+    
+    '''
+    TODO: gates are currently applied only to q0. Need to get the selected qubit number as a parameter,
+          and pass it the circuit below.
+    '''
 
     circuit = QuantumCircuit(1)
     if gate_name == 'X':
@@ -25,6 +63,19 @@ def qiskit_gate_to_sched(backend_name, gate_name):
         circuit.z(0)
     if gate_name == 'H':
         circuit.h(0)
+    if gate_name == 'ID':
+        circuit.id(0)
+    if gate_name == 'SX':
+        circuit.sx(0)
+    if gate_name == 'RZ':
+        '''
+        TODO: currently, rx gate applies a pi/2 rotation, but need to make this general so 
+              that the angle value can be passed by the user
+        '''
+        circuit.rz(np.pi/2,0)
+    '''
+    TODO: Add CX gate (need to pass two qubits to it)
+    '''
 
     if backend_name == 'Armonk':
         backend = FakeArmonk()
@@ -36,6 +87,7 @@ def qiskit_gate_to_sched(backend_name, gate_name):
     
     trans_circuit = transpile(circuit, backend)
     return build_schedule(trans_circuit, backend)
+
 
 # Function to translate qiskit-schedule to scheduler-editor format
 def qiskit_to_schedviz(qiskit_sch, current_samples):
@@ -64,7 +116,7 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
             chan_sample = current_samples[chan]
         else: 
             chan_sample = 0
-            
+
         if isinstance(instruction, Play):
             '''TODO: For Play instructions (pulses), 
             Need to check that the last sample of each pulse matches the first sample of the next.
@@ -194,6 +246,8 @@ def plot_sch(phases,freqs,pulses,samples):
     ### ### ### ### ### ### ### ###
     '''
 
+
+
 class ScheduleEditor:
     def __init__(self):
 
@@ -226,24 +280,24 @@ class ScheduleEditor:
         self._current_phase = 0
         self._current_freq = 0
         self._current_pulse = np.array([])
-        self.dummy_pulse  = np.array([])   # DELETE after figuring out how to pass pulses from pulse-editor
+        self.dummy_pulse  = np.array([])        # DELETE after figuring out how to pass pulses from pulse-editor
 
-        self.schedule = tuple()  # Final schedule (currently uses Qiskit's data structuring) 
+        self.schedule = tuple()                 # Final schedule (currently uses Qiskit's data structuring) 
 
         backend_input_lst = ['Armonk', 'Almaden', 'Casablanca']
-        backend_qnum_lst = [1, 20, 20]
-        backend_qubit_lst = ['q0']      # NOTE: must be updated as a function of selected backend
-        backend_chan_lst = ['d0','u0','d1']       # NOTE: must be updated as a function of selected backend (includes d and u)
-        backend_cmap_lst = ['q0 <-> q1',
-                            'q1 <-> q2']  # NOTE: This is a dummy coupling map. Need to import actual map from backend
-                                          # This will be used for 2 qubit gates, therefore this list will replace the
-                                          # backend_qubit_lst in the dd widget when 2-qubit gates are selected (e.g. cx)
+        backend_qnum_lst = [1, 20, 7]
+        backend_qubit_lst = ['q0']                # Updated as a function of selected backend
+        #backend_chan_lst = ['d0', 'u0', 'd1'] 
+        backend_chan_lst = ['d0']                 # Updated as a function of selected backend (includes d and u)
+        backend_cmap_lst = ['q5 <-> q6']          # NOTE: This is a dummy coupling map. Need to import actual map from backend
+                                                  # This will be used for 2 qubit gates, therefore this list will replace the
+                                                  # backend_qubit_lst in the dd widget when 2-qubit gates are selected (e.g. cx)
 
         schedule_input_lst = ['From Native Gate', 'Custom Schedule', 'From Variable']
-        nativegate_input_lst = ['X','Y','Z','H','CX','CZ']
+        nativegate_input_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
         pulse_input_lst = []
 
-        ### User Interface Components ###
+        ### User Interface (UI) Components ###
 
         # Dropdown menu for backend
         backend_input_dd = widgets.Dropdown(options=backend_input_lst, 
@@ -258,7 +312,7 @@ class ScheduleEditor:
                                              disabled=False)
 
         # Dropdown menu for native gate selection
-        nativegate_input_dd = widgets.Dropdown(options=nativegate_input_lst, 
+        nativegate_input_dd = widgets.Dropdown(options=nativegate_input_lst[0:len(nativegate_input_lst)-1], 
                                                layout=widgets.Layout(width='160px'),
                                                description='From Gate:',
                                                continuous_update=False,
@@ -368,6 +422,20 @@ class ScheduleEditor:
 
         
         ### Widget Interactions ###
+
+        # Update dropdown options for gates and channels based on selected backend
+        def update_dd_options(*args):
+            current_backend = backend_input_dd.value
+            backend_qubit_lst, backend_chan_lst, backend_cmap_lst, nativegate_input_lst = qiskit_backend_config(current_backend, backend_input_lst, backend_qnum_lst)
+
+            nativegate_input_dd.options = nativegate_input_lst
+            nativegate_qubit_dd.options = backend_qubit_lst
+            shiftphase_chan_dd.options = backend_chan_lst
+            shiftfreq_chan_dd.options = backend_chan_lst
+            pulse_chan_dd.options = backend_chan_lst
+
+
+        backend_input_dd.observe(update_dd_options, 'value')          
 
         # Update Schedule when append buttons are pressed
         def update_schedule(b):
