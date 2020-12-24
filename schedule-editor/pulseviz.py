@@ -105,11 +105,11 @@ def qiskit_gate_to_sched(backend_name, gate_name, qubits, num_qbs):
               that the angle value can be passed by the user
         '''
         circuit.rz(np.pi/2,0)
-    '''
+   
     if gate_name == 'CX':
-        TODO: Add CX gate. Currently commented out  bc only have support for single qubits, so qa always equals qb.
+        '''TODO: Add CX gate. Currently commented out  bc only have support for single qubits, so qa always equals qb.'''
         circuit.cx(qa,qb)
-    '''
+    
 
     if backend_name == 'Armonk':
         backend = FakeArmonk()
@@ -622,14 +622,13 @@ class ScheduleEditor:
         # Update self._current_qubits based on value of the nativegate_qubit_dd dropdown menu
         def update_curr_qubits(*args):
             if nativegate_input_dd.value == 'CX':
-                '''
-                TODO: Need to update self._current_qubits based on the selected option on the dropdown menu (nativegate_qubit_dd). 
-                      This will depend on the current coupling map (self._backend_cmap_lst), so for example, if 'q2 <-> q3' is selected, 
-                      self._current_qubits = ['q2', 'q3']
-                '''
-                pass
+                qubits_indx = self._backend_cmap_nms.index(nativegate_qubit_dd.value)
+                qb_pair = self._backend_cmap_lst[qubits_indx]
+                self._current_qubits = ['q'+str(qb) for qb in qb_pair]
+                
             else: 
                 self._current_qubits = [nativegate_qubit_dd.value, nativegate_qubit_dd.value]
+            print(self._current_qubits)
 
         nativegate_qubit_dd.observe(update_curr_qubits, 'value')
 
@@ -638,7 +637,7 @@ class ScheduleEditor:
             if nativegate_input_dd.value == 'CX':
                 nativegate_qubit_dd.options = self._backend_cmap_nms
             else:
-                nativegate_qubit_dd.options = self._backend_chan_lst
+                nativegate_qubit_dd.options = self._backend_qubit_lst
 
         nativegate_input_dd.observe(update_dd_qubits, 'value')
 
