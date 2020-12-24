@@ -317,16 +317,15 @@ class ScheduleEditor:
         backend_qnum_lst = [1, 20, 7]
         
         '''
-        TODO: Since I already have a function that returns the params below based on selected backend, might just call it here
-              rather than doing this explicit initialization
+        TODO: Since I already have a function that returns the params below based on selected backend (qiskit_backend_config),
+              might just call it here rather than doing this explicit initialization
         '''
-        backend_qubit_lst = ['q0']               # Updated as a function of selected backend
-        #backend_chan_lst = ['d0', 'u0', 'd1'] 
-        backend_chan_lst = ['d0']                # Updated as a function of selected backend (includes d and u)
-        backend_cmap_lst = None                  # Updated as a function of selected backend
-        backend_cmap_nms = None                  # Maps back_cmap_lst elems to strings that can be displayed in the dropdown menu
-                                                 # e.g. [2,3] maps to ['q2 -> q3']
-        
+        self._backend_qubit_lst = ['q0']  # Updated as a function of selected backend
+        self._backend_chan_lst = ['d0']   # Updated as a function of selected backend (includes d and u)
+        self._backend_cmap_lst = None     # Updated as a function of selected backend
+        self._backend_cmap_nms = None     # Maps back_cmap_lst elems to strings that can be displayed in the dropdown menu
+                                          # e.g. [2,3] maps to ['q2 -> q3']
+
         nativegate_input_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
 
         '''
@@ -360,7 +359,7 @@ class ScheduleEditor:
                                                disabled=False)
 
         # Dropdown menu for qubit selection to native gate schedule to main schedule
-        nativegate_qubit_dd = widgets.Dropdown(options=backend_qubit_lst, 
+        nativegate_qubit_dd = widgets.Dropdown(options=self._backend_qubit_lst, 
                                                layout=widgets.Layout(width='160px'),
                                                description='Append to:',
                                                continuous_update=False,
@@ -386,7 +385,7 @@ class ScheduleEditor:
                                                            disabled=False)
 
         # Dropdown menu for channel selection to append Phase Shift schedule
-        shiftphase_chan_dd = widgets.Dropdown(options=backend_chan_lst, 
+        shiftphase_chan_dd = widgets.Dropdown(options=self._backend_chan_lst, 
                                               layout=widgets.Layout(width='160px'),
                                               description='Append to:',
                                               continuous_update=False,
@@ -411,7 +410,7 @@ class ScheduleEditor:
                                                           disabled=False)
 
          # Dropdown menu for channel selection to append Frequency value schedule
-        shiftfreq_chan_dd = widgets.Dropdown(options=backend_chan_lst, 
+        shiftfreq_chan_dd = widgets.Dropdown(options=self._backend_chan_lst, 
                                              layout=widgets.Layout(width='160px'),
                                              description='Append to:',
                                              continuous_update=False,
@@ -437,7 +436,7 @@ class ScheduleEditor:
                                           disabled=False)
 
          # Dropdown menu for channel selection to append pulse to schedule
-        pulse_chan_dd = widgets.Dropdown(options=backend_chan_lst, 
+        pulse_chan_dd = widgets.Dropdown(options=self._backend_chan_lst, 
                                          layout=widgets.Layout(width='160px'),
                                          description='Append to:',
                                          continuous_update=False,
@@ -467,19 +466,22 @@ class ScheduleEditor:
         # Update dropdown options for gates and channels based on selected backend
         def update_dd_options(*args):
             current_backend = backend_input_dd.value
-            backend_qubit_lst, backend_chan_lst, backend_cmap_lst, nativegate_input_lst = qiskit_backend_config(current_backend, backend_input_lst, backend_qnum_lst)
+            self._backend_qubit_lst, self._backend_chan_lst, self._backend_cmap_lst, nativegate_input_lst = qiskit_backend_config(current_backend, backend_input_lst, backend_qnum_lst)
 
-            backend_cmap_nms = []
-            for qb_pair in backend_cmap_lst:
-                backend_cmap_nms.append('q'+str(qb_pair[0])+'->q'+str(qb_pair[1]))
+            self._backend_cmap_nms = []
+            if self._backend_cmap_lst is not None:
+                for qb_pair in self._backend_cmap_lst:
+                    self._backend_cmap_nms.append('q'+str(qb_pair[0])+'->q'+str(qb_pair[1]))
+            else:
+                self._backend_cmap_nms = None
 
-            print(backend_cmap_nms)
+            print(self._backend_cmap_nms)
 
             nativegate_input_dd.options = nativegate_input_lst
-            nativegate_qubit_dd.options = backend_qubit_lst
-            shiftphase_chan_dd.options = backend_chan_lst
-            shiftfreq_chan_dd.options = backend_chan_lst
-            pulse_chan_dd.options = backend_chan_lst
+            nativegate_qubit_dd.options = self._backend_qubit_lst
+            shiftphase_chan_dd.options = self._backend_chan_lst
+            shiftfreq_chan_dd.options = self._backend_chan_lst
+            pulse_chan_dd.options = self._backend_chan_lst
 
 
         backend_input_dd.observe(update_dd_options, 'value')          
@@ -617,20 +619,28 @@ class ScheduleEditor:
         for chan in chan_dds:
             chan.observe(update_channels, 'value')
 
-        # Update _current_qubits based on value of the nativegate_qubit_dd dropdown menu
-        def update_qubits(*args):
+        # Update self._current_qubits based on value of the nativegate_qubit_dd dropdown menu
+        def update_curr_qubits(*args):
             if nativegate_input_dd.value == 'CX':
                 '''
                 TODO: Need to update self._current_qubits based on the selected option on the dropdown menu (nativegate_qubit_dd). 
-                      This will depend on the current coupling map (backend_cmap_lst), so for example, if 'q2 <-> q3' is selected, 
+                      This will depend on the current coupling map (self._backend_cmap_lst), so for example, if 'q2 <-> q3' is selected, 
                       self._current_qubits = ['q2', 'q3']
                 '''
                 pass
             else: 
                 self._current_qubits = [nativegate_qubit_dd.value, nativegate_qubit_dd.value]
 
-        nativegate_qubit_dd.observe(update_qubits, 'value')
+        nativegate_qubit_dd.observe(update_curr_qubits, 'value')
 
+        # Update dropdown options for qubit selection based on single-qubit or two-qubit gate
+        def update_dd_qubits(*args):
+            if nativegate_input_dd.value == 'CX':
+                nativegate_qubit_dd.options = self._backend_cmap_nms
+            else:
+                nativegate_qubit_dd.options = self._backend_chan_lst
+
+        nativegate_input_dd.observe(update_dd_qubits, 'value')
 
         # Plot schedule when outputs change
         '''
