@@ -201,7 +201,7 @@ def plot_sch(phases,freqs,pulses,samples):
     labels = ['a','d','m','u'] # labels for different channels:
                                # a: acquire, d: drive, m: measure, u: x-correlation
 
-    num_chans = len(pulses_srt)
+    num_chans = max(len(pulses_srt), 1)
     gs = gridspec.GridSpec(num_chans, 1)
     ax = []
 
@@ -275,7 +275,7 @@ def plot_sch(phases,freqs,pulses,samples):
 
 
 
-class ScheduleEditor:
+class ScheduleEditor(widgets.VBox):
     def __init__(self):
 
         ### Initialize ###
@@ -662,6 +662,7 @@ class ScheduleEditor:
         #wf_fig_out = widgets.interactive_output(plot_wf, {'nativegate':nativegate_input_dd})
 
         schedule_editor = widgets.HBox([left_panel, plot_sch_out])
+        super().__init__([schedule_editor])
 
         self._editor = schedule_editor
     
