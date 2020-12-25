@@ -240,10 +240,22 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
             samps = i_sig.size
             t = np.linspace(0,samps,samps)
 
-            ax[chan_num].step(t, i_sig, 'r')
-            ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
-            ax[chan_num].step(t, q_sig, 'b')
-            ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
+            if chan[0][0] == 'd':
+                ax[chan_num].step(t, i_sig, 'r')
+                ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
+                ax[chan_num].step(t, q_sig, 'b')
+                ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
+            else:
+            #elif chan[0][0] == 'u': 
+                '''
+                TODO: Here I'm using an else statement to display anything that isn't a drive 
+                    channel 'd' as if it was a control channel 'u'. If support for 'a' 'm' channels is added
+                    need to make this into an 'elif chan[0][0] == 'u':' and also change colors of those channels too
+                '''
+                ax[chan_num].step(t, i_sig, 'y')
+                ax[chan_num].fill_between(t, i_sig, color='y', alpha=0.2, step='pre')
+                ax[chan_num].step(t, q_sig, 'orange')
+                ax[chan_num].fill_between(t, q_sig, color='orange', alpha=0.2, step='pre')
 
             # plot phases
             if chan[0] in phases:
