@@ -327,7 +327,7 @@ class ScheduleEditor(widgets.VBox):
         self._current_pulse = np.array([])
         self.dummy_pulse  = np.array([])        # DELETE after figuring out how to pass pulses from pulse-editor
 
-        self.schedule = tuple()                 # Final schedule (currently uses Qiskit's data structuring) 
+        self.schedule = tuple()                 # Final schedule (currently will use Qiskit's data structuring) 
 
         backend_input_lst = ['Armonk', 'Almaden', 'Casablanca']
         backend_qnum_lst = [1, 20, 7]
@@ -341,15 +341,13 @@ class ScheduleEditor(widgets.VBox):
         self._backend_cmap_lst = None     # Updated as a function of selected backend
         self._backend_cmap_nms = None     # Maps back_cmap_lst elems to strings that can be displayed in the dropdown menu
                                           # e.g. [2,3] maps to ['q2 -> q3']
-
         nativegate_input_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
 
         '''
         TODO: Might not need a schedule_input_lst dropdown menu. I had one in the Pulse editor to "gray out" certain 
               functionalities depending on what was selected. But for the schedule editor, there is no reason to do this. So I can
               remove both schedule_input_lst and schedule_input_dd
-        '''
-           
+        '''    
         schedule_input_lst = ['From Native Gate', 'Custom Schedule', 'From Array']
         pulse_input_lst = []
 
