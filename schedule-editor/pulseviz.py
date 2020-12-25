@@ -658,6 +658,3 @@ class ScheduleEditor(widgets.VBox):
     
     def update(self):
         self._plot.update()
-
-    def _ipython_display_(self):
-        display(self._editor)
