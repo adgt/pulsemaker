@@ -453,7 +453,10 @@ class ScheduleEditor(widgets.VBox):
                                           layout=widgets.Layout(width='80px'),
                                           disabled=False)
         pulse_append_btn.name = 'pulse_btn'
-
+        
+        clear_btn = widgets.Button(description='Clear',
+                                   layout=widgets.Layout(width='auto', height='auto'))
+                                   
         # Box for pulse-related widgets:
         pulse_pannel = widgets.VBox([pulse_input_dd,
                                           widgets.HBox([pulse_chan_dd,pulse_append_btn])])
@@ -461,11 +464,20 @@ class ScheduleEditor(widgets.VBox):
         # Combines all dropdown menus in a left panel
         left_panel = widgets.VBox([widgets.Label("Backend:"), backend_input_dd,
                                    widgets.Label("Input:"), schedule_input_dd,
-                                   widgets.Label("Schedule:"),
+                                   widgets.HBox([widgets.Label("Schedule:"), clear_btn],
+                                                 layout=widgets.Layout(justify_content='space-between')),
                                    nativegate_pannel, shiftphase_pannel, shiftfreq_pannel,pulse_pannel])
 
         
         ### Widget Interactions ###
+        def clear_data(b):
+            self.pulses.clear()    
+            self.phases.clear()        
+            self.freqs.clear()        
+            self.samples.clear()
+            self.update()
+        
+        clear_btn.on_click(clear_data)
 
         # Update dropdown options for gates and channels based on selected backend
         def update_dd_options(*args):
