@@ -183,111 +183,103 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
 
     return phases, freqs, pulses
 
-
-# Function to Update schedule plot
-def plot_sch(phases,freqs,pulses,samples):
-
-    # Check channels in phase and frequency dicts but not on pulse
-    # Create one-elem pulse array on those chans to avoid matplotlib error for missing data
-    phase_chans = set(phases.keys())
-    freq_chans = set(freqs.keys())
-    pulses_srt = pulses.copy()
-
-    for chan in (set.union(phase_chans,freq_chans)):
-        if chan not in pulses_srt:
-            pulses_srt[chan]=np.array([0])
-
-
-    labels = ['a','d','m','u'] # labels for different channels:
-                               # a: acquire, d: drive, m: measure, u: x-correlation
-
-    num_chans = len(pulses_srt)
-    gs = gridspec.GridSpec(num_chans, 1)
-    ax = []
-
-    ''' 
-    To sort pulse dictionary, channel index values are calculated as follows:
-    indx[0][0] stores the type of channel: a, d, m, u. By using the index value of the 'labels' list, 
-    we know the position the channel holds within a given qubit. indx[0][1] stores the qubit value, so 
-    by multiplying by the length of the 'labels' list, we know where the qubit sits wrt the others.
-    by adding the two, we know where a given qubit channel should sit wrt to other channels.
-    ''' 
-    pulses_srt = sorted(pulses_srt.items(), 
-                    key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
-
-
-    fig = plt.subplots(figsize=(9,5))
-
-    for chan_num, chan in enumerate(pulses_srt):
-
-        # plot pulses
-        if chan_num == 0:
-            ax.append(plt.subplot(gs[chan_num]))
-        else: 
-            ax.append(plt.subplot(gs[chan_num], sharex=ax[0]))
-        if chan_num < num_chans - 1:
-            plt.setp(ax[chan_num].get_xticklabels(), visible=False)
+def plot_pulse_schedule(phases, freqs, pulses, samples):
+    # Function to draw/update schedule plot
+    def _plot(phases,freqs,pulses,samples):
         
-        # NOTE: Axis settings. Still need to decide how they should look like
-        ax[chan_num].text(0,0, chan[0], horizontalalignment='center',verticalalignment='center', fontweight='bold')
-        ax[chan_num].tick_params(axis='y', which='major', labelsize=7)
-        #ax[chan_num].tick_params(axis="y",direction="in", pad=-22)
-        #ax[chan_num].get_yaxis().set_ticks([])
-        #ax[chan_num].set_ylabel(chan+'  ', rotation=0, fontweight='bold')
-        
-        i_sig = np.real(chan[1])
-        q_sig = np.imag(chan[1])
-        samps = i_sig.size
-        t = np.linspace(0,samps,samps)
-        
-        if chan[0][0] == 'd':
+        # Check channels in phase and frequency dicts but not on pulse
+        # Create one-elem pulse array on those chans to avoid matplotlib error for missing data
+        phase_chans = set(phases.keys())
+        freq_chans = set(freqs.keys())
+        pulses_srt = pulses.copy()
+
+        for chan in (set.union(phase_chans,freq_chans)):
+            if chan not in pulses_srt:
+                pulses_srt[chan]=np.array([0])
+
+
+        labels = ['a','d','m','u'] # labels for different channels:
+                                   # a: acquire, d: drive, m: measure, u: x-correlation
+
+        num_chans = max(len(pulses_srt), 1)
+        gs = gridspec.GridSpec(num_chans, 1)
+        ax = []
+
+        ''' 
+        To sort pulse dictionary, channel index values are calculated as follows:
+        indx[0][0] stores the type of channel: a, d, m, u. By using the index value of the 'labels' list, 
+        we know the position the channel holds within a given qubit. indx[0][1] stores the qubit value, so 
+        by multiplying by the length of the 'labels' list, we know where the qubit sits wrt the others.
+        by adding the two, we know where a given qubit channel should sit wrt to other channels.
+        ''' 
+        pulses_srt = sorted(pulses_srt.items(), 
+                        key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
+
+
+        fig = plt.subplots(figsize=(9,5))
+
+        for chan_num, chan in enumerate(pulses_srt):
+
+            # plot pulses
+            if chan_num == 0:
+                ax.append(plt.subplot(gs[chan_num]))
+            else: 
+                ax.append(plt.subplot(gs[chan_num], sharex=ax[0]))
+            if chan_num < num_chans - 1:
+                plt.setp(ax[chan_num].get_xticklabels(), visible=False)
+
+            # NOTE: Axis settings. Still need to decide how they should look like
+            ax[chan_num].text(0,0, chan[0], horizontalalignment='center',verticalalignment='center', fontweight='bold')
+            ax[chan_num].tick_params(axis='y', which='major', labelsize=7)
+            #ax[chan_num].tick_params(axis="y",direction="in", pad=-22)
+            #ax[chan_num].get_yaxis().set_ticks([])
+            #ax[chan_num].set_ylabel(chan+'  ', rotation=0, fontweight='bold')
+
+            i_sig = np.real(chan[1])
+            q_sig = np.imag(chan[1])
+            samps = i_sig.size
+            t = np.linspace(0,samps,samps)
+
             ax[chan_num].step(t, i_sig, 'r')
             ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
             ax[chan_num].step(t, q_sig, 'b')
             ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
-        else:
-        #elif chan[0][0] == 'u': 
-            '''
-            TODO: Here I'm using an else statement to display anything that isn't a drive 
-                  channel 'd' as if it was a control channel 'u'. If support for 'a' 'm' channels is added
-                  need to make this into an 'elif chan[0][0] == 'u':' and also change colors of those channels too
-            '''
-            ax[chan_num].step(t, i_sig, 'y')
-            ax[chan_num].fill_between(t, i_sig, color='y', alpha=0.2, step='pre')
-            ax[chan_num].step(t, q_sig, 'orange')
-            ax[chan_num].fill_between(t, q_sig, color='orange', alpha=0.2, step='pre')
 
-        # plot phases
-        if chan[0] in phases:
-            phases_lst = phases[chan[0]]
-            for time in phases_lst:           
-                ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
-                                  fontsize=14, color='purple',
-                                  ha='center', va='center')
+            # plot phases
+            if chan[0] in phases:
+                phases_lst = phases[chan[0]]
+                for time in phases_lst:           
+                    ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
+                                      fontsize=14, color='purple',
+                                      ha='center', va='center')
 
 
-        # plot frequencies
-        if chan[0] in freqs:
-            freqs_lst = freqs[chan[0]]
-            for time in freqs_lst:
-                ax[chan_num].text(x=time[0], y=0, s=r'$\downarrow$',
-                        fontsize=14, color='forestgreen',
-                        ha='center', va='bottom')
-    
-    plt.subplots_adjust(hspace=.0)
-    
-    '''
-    ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
-    print('Phases:',phases)
-    print('Frequencies:',freqs)
-    print('Pulses:',pulses)
-    print('Samples:',samples)
-    ### ### ### ### ### ### ### ###
-    '''
+            # plot frequencies
+            if chan[0] in freqs:
+                freqs_lst = freqs[chan[0]]
+                for time in freqs_lst:
+                    ax[chan_num].text(x=time[0], y=0, s=r'$\downarrow$',
+                            fontsize=14, color='forestgreen',
+                            ha='center', va='bottom')
 
+        plt.subplots_adjust(hspace=.0)
 
+        '''
+        ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
+        print('Phases:',phases)
+        print('Frequencies:',freqs)
+        print('Pulses:',pulses)
+        print('Samples:',samples)
+        ### ### ### ### ### ### ### ###
+        '''
 
-class ScheduleEditor:
+    return widgets.interactive(_plot,
+                              phases=widgets.fixed(phases),
+                              freqs=widgets.fixed(freqs),
+                              pulses=widgets.fixed(pulses),
+                              samples=widgets.fixed(samples))
+
+class ScheduleEditor(widgets.VBox):
     def __init__(self):
 
         ### Initialize ###
@@ -461,7 +453,10 @@ class ScheduleEditor:
                                           layout=widgets.Layout(width='80px'),
                                           disabled=False)
         pulse_append_btn.name = 'pulse_btn'
-
+        
+        clear_btn = widgets.Button(description='Clear',
+                                   layout=widgets.Layout(width='auto', height='auto'))
+                                   
         # Box for pulse-related widgets:
         pulse_pannel = widgets.VBox([pulse_input_dd,
                                           widgets.HBox([pulse_chan_dd,pulse_append_btn])])
@@ -469,11 +464,20 @@ class ScheduleEditor:
         # Combines all dropdown menus in a left panel
         left_panel = widgets.VBox([widgets.Label("Backend:"), backend_input_dd,
                                    widgets.Label("Input:"), schedule_input_dd,
-                                   widgets.Label("Schedule:"),
+                                   widgets.HBox([widgets.Label("Schedule:"), clear_btn],
+                                                 layout=widgets.Layout(justify_content='space-between')),
                                    nativegate_pannel, shiftphase_pannel, shiftfreq_pannel,pulse_pannel])
 
         
         ### Widget Interactions ###
+        def clear_data(b):
+            self.pulses.clear()    
+            self.phases.clear()        
+            self.freqs.clear()        
+            self.samples.clear()
+            self.update()
+        
+        clear_btn.on_click(clear_data)
 
         # Update dropdown options for gates and channels based on selected backend
         def update_dd_options(*args):
@@ -654,31 +658,15 @@ class ScheduleEditor:
         nativegate_input_dd.observe(update_dd_qubits, 'value')
 
         # Plot schedule when outputs change
-        '''
-        plot_sch_out = widgets.interactive_output(plot_sch,
-                                                  {'phases':widgets.fixed(self.phases),
-                                                   'freqs':widgets.fixed(self.freqs),
-                                                   'pulses':widgets.fixed(self.pulses),
-                                                   'samples':widgets.fixed(self.samples)})
-        '''
-
-        plot_sch_out = widgets.interactive(plot_sch,
-                                           phases=widgets.fixed(self.phases),
-                                           freqs=widgets.fixed(self.freqs),
-                                           pulses=widgets.fixed(self.pulses),
-                                           samples=widgets.fixed(self.samples))
-
-        self._plot_sch = plot_sch_out
+        self._plot = plot_pulse_schedule(self.phases, self.freqs, self.pulses, self.samples)
 
         # TEST FIG OUT (NOTE: TO BE DELETED)
         #wf_fig_out = widgets.interactive_output(plot_wf, {'nativegate':nativegate_input_dd})
 
-        schedule_editor = widgets.HBox([left_panel, plot_sch_out])
+        schedule_editor = widgets.HBox([left_panel, self._plot])
+        super().__init__([schedule_editor])
 
         self._editor = schedule_editor
     
     def update(self):
-        self._plot_sch.update()
-
-    def _ipython_display_(self):
-        display(self._editor)
+        self._plot.update()
