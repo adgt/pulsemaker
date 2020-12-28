@@ -195,7 +195,7 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
 
         for chan in (set.union(phase_chans,freq_chans)):
             if chan not in pulses_srt:
-                pulses_srt[chan]=np.array([0])
+                pulses_srt[chan]=[0, np.array([0])]
 
 
         labels = ['a','d','m','u'] # labels for different channels:
@@ -220,7 +220,7 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
 
         for chan_num, chan in enumerate(pulses_srt):
 
-            # plot pulses
+            # Plot pulses
             if chan_num == 0:
                 ax.append(plt.subplot(gs[chan_num]))
             else: 
@@ -228,15 +228,35 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
             if chan_num < num_chans - 1:
                 plt.setp(ax[chan_num].get_xticklabels(), visible=False)
 
-            # NOTE: Axis settings. Still need to decide how they should look like
+            ''' TODO: Axis settings. Still need to decide how they should look like '''
             ax[chan_num].text(0,0, chan[0], horizontalalignment='center',verticalalignment='center', fontweight='bold')
             ax[chan_num].tick_params(axis='y', which='major', labelsize=7)
             #ax[chan_num].tick_params(axis="y",direction="in", pad=-22)
             #ax[chan_num].get_yaxis().set_ticks([])
             #ax[chan_num].set_ylabel(chan+'  ', rotation=0, fontweight='bold')
 
-            i_sig = np.real(chan[1])
-            q_sig = np.imag(chan[1])
+            # Construct real/imag signals to be plotted
+            pulses_lst = chan[1]
+            current_plot_sample = 0
+            i_sig = np.array([])
+            q_sig = np.array([])
+            ''' 
+            TODO: Do we need to check if there is a pulse instruction element with a starting time that is lower than
+                      previous elements that have already been constructed? Is this a possible scenario? If so, we
+                      probably need to then sort all pulse elements by starting time to avoid this issue 
+            '''
+            
+            for pulse in pulses_lst:
+                if pulse[0] > current_plot_sample:
+                    # Pad with zeros any gaps between instructions were end time and start time don't match
+                    i_sig = np.append(i_sig, np.zeros(pulse[0]-current_plot_sample))
+                    q_sig = np.append(q_sig, np.zeros(pulse[0]-current_plot_sample))
+
+                i_sig = np.append(i_sig,np.real(pulse[1]))
+                q_sig = np.append(q_sig,np.imag(pulse[1]))
+
+                current_plot_sample = len(i_sig)
+                
             samps = i_sig.size
             t = np.linspace(0,samps,samps)
 
@@ -309,7 +329,8 @@ class ScheduleEditor(widgets.VBox):
         '''
 
         self.pulses = {}   # Dictionary of pulses. 
-                           # Format: {d0:waveform00, u0:waveform01, d1:waveform11 ...} waveformx is a numpy array with pulse data
+                           # Format: {d0:waveform00, u0:waveform01, d1:waveform11 ...} waveformx is a list with [time,wf] elems
+                           # time is the starting time of the pulse "chunk", wf is a numpy array with the pulse data
         self.phases = {}   # Dictionary of phase-shift values. 
                            # Format: {d0:phaseshift00, u0:phaseshift01, d1:phaseshift11 ...} phaseshiftx is a list with [time,phase] elems
         self.freqs = {}    # Dictionary of frequency values. 
@@ -501,8 +522,6 @@ class ScheduleEditor(widgets.VBox):
             else:
                 self._backend_cmap_nms = None
 
-            print(self._backend_cmap_nms)
-
             nativegate_input_dd.options = nativegate_input_lst
             nativegate_qubit_dd.options = self._backend_qubit_lst
             shiftphase_chan_dd.options = self._backend_chan_lst
@@ -563,10 +582,15 @@ class ScheduleEditor(widgets.VBox):
 
                 if self._current_chann[0] in self.phases.keys():
                     # Check if channel is already present in phases to append/replace new data
-                    # Else, add channel to phases.
-                    
+                    # Else, add channel to phases. 
                     phase_array = self.phases[self._current_chann[0]]
-
+                    
+                    '''
+                    TODO: Currently, (below) if user keeps appending phases/freqs but no need pulse data has been added, the
+                          the value of phase/freq keeps getting replaced. Is this the behavior we want? I think so,
+                          but it could be problematic if user adds gate that finishes with a phase shift, and then
+                          adds another phase shift immediately; the last one will get replaced.
+                    '''
                     if phase_array[-1][0] == current_sample:
                         # If sample number hasn't changed, replace PhaseShift value
                         # Else, append new [time,PhaseShift] item to phases
@@ -605,22 +629,34 @@ class ScheduleEditor(widgets.VBox):
             elif b.name == 'pulse_btn':
                 '''
                 TODO: Need to add padding option (add dotted line of where schedule stands on each channel?)
-                         Best way might be to add padding for visualization in the plot_sch function, but keep
-                         arrays for each channel true to what the user is adding. The challenge is then keeping
-                         track of the "current_sample" for each channel individually, but might be as simple as
-                         always checking the length of the pulse array for each specific chan.
+                      Best way might be to add padding for visualization in the plot_sch function, but keep
+                      arrays for each channel true to what the user is adding. The challenge is then keeping
+                      track of the "current_sample" for each channel individually, but might be as simple as
+                      always checking the length of the pulse array for each specific chan.
                 '''
-                pulse = self.dummy_pulse 
+                if self._current_chann[2] in self.samples.keys():
+                    # Check if channel is already present in samples to extract current sample
+                    # Else, current sample is 0.
+                    current_sample = self.samples[self._current_chann[2]]
+                else:
+                    current_sample = 0
+
+                '''
+                TODO: Below, importing current_pulse from a dummy param (self.dummy_pulse) passed by user. 
+                      This needs to be updated to the pulse in the PulseEditor (if it exists)
+                '''    
+                current_pulse = self.dummy_pulse
+                pulse = [current_sample, current_pulse]
 
                 if self._current_chann[2] in self.pulses.keys():
                     # Check if channel is already present in pulses to append new data
-                    # Else, add channel to pulses.
-                    pulse_array = np.append(self.pulses[self._current_chann[2]],pulse)
+                    # Else, add channel to pulses.                    
+                    pulse_array = self.pulses[self._current_chann[2]] + [pulse]
                 else:
-                    pulse_array = pulse
+                    pulse_array = [pulse]
 
                 self.pulses[self._current_chann[2]] = pulse_array
-                self.samples[self._current_chann[2]] = len(pulse_array)
+                self.samples[self._current_chann[2]] = current_sample + len(current_pulse)
 
             self.update()
 
@@ -654,7 +690,6 @@ class ScheduleEditor(widgets.VBox):
                 
             else: 
                 self._current_qubits = [nativegate_qubit_dd.value, nativegate_qubit_dd.value]
-            print(self._current_qubits)
 
         nativegate_qubit_dd.observe(update_curr_qubits, 'value')
 
