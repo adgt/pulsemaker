@@ -158,25 +158,20 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
             padding the pulse data in between consecutive Play instructions, so would need to fill in that missing data.
             From what I've seen, when building schedules from native gates, no Delay Instructions are used, but
             this might change in the future'''
-            pulse = np.array(instruction.pulse.samples)
-
+            pulse = [chan_sample+start_time, np.array(instruction.pulse.samples)]
+            
             if chan in pulses.keys():
-                pulses[chan] = np.append(pulses[chan],pulse)
+                pulses[chan] = pulses[chan] + [pulse]
             else:
-                pulses[chan] = pulse
+                pulses[chan] = [pulse]
 
         elif isinstance(instruction, ShiftPhase):
             phase = [chan_sample+start_time, instruction.phase]
 
             if chan in phases.keys():
-                # Check if channel is already present in phases to append/replace new data
-                # Else, add channel to phases.
-                phase_array = phases[chan]
-                phase_array += [phase]         
+                phases[chan] = phases[chan] + [phase]       
             else:
-                phase_array = [phase]
-
-            phases[chan] = phase_array
+                phases[chan] = [phase]
 
         '''TODO: isinstance(instruction, ShiftFrequency). 
                  Haven't done it yet bc haven't seen this instruction in any of the native gates.'''
@@ -195,7 +190,7 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
 
         for chan in (set.union(phase_chans,freq_chans)):
             if chan not in pulses_srt:
-                pulses_srt[chan]=[0, np.array([0])]
+                pulses_srt[chan]=[[0, np.array([0])]]
 
 
         labels = ['a','d','m','u'] # labels for different channels:
@@ -255,8 +250,15 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
                 i_sig = np.append(i_sig,np.real(pulse[1]))
                 q_sig = np.append(q_sig,np.imag(pulse[1]))
 
-                current_plot_sample = len(i_sig)
                 
+                ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
+                print('chan:',chan[0] ,'pulse start time:', pulse[0])
+                print('chan:',chan[0] ,'curr sample bf update', current_plot_sample)
+                current_plot_sample = len(i_sig)
+                print('chan:',chan[0] ,'curr sample af update', current_plot_sample)
+                #####
+                
+
             samps = i_sig.size
             t = np.linspace(0,samps,samps)
 
@@ -284,7 +286,6 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
                     ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
                                       fontsize=14, color='purple',
                                       ha='center', va='center')
-
 
             # plot frequencies
             if chan[0] in freqs:
@@ -501,6 +502,8 @@ class ScheduleEditor(widgets.VBox):
 
         
         ### Widget Interactions ###
+        
+        # Clear schedule
         def clear_data(b):
             self.pulses.clear()    
             self.phases.clear()        
@@ -528,7 +531,6 @@ class ScheduleEditor(widgets.VBox):
             shiftfreq_chan_dd.options = self._backend_chan_lst
             pulse_chan_dd.options = self._backend_chan_lst
 
-
         backend_input_dd.observe(update_dd_options, 'value')          
 
         # Update Schedule when append buttons are pressed
@@ -552,22 +554,35 @@ class ScheduleEditor(widgets.VBox):
                     if chan in self.pulses.keys():
                         # Check if channel is already present in pulses to append new data
                         # Else, add channel to pulses.
-                        pulse_array = np.append(self.pulses[chan],pulse)
+                        self.pulses[chan] = self.pulses[chan] + pulse
                     else:
-                        pulse_array = pulse
-                    self.pulses[chan] = pulse_array
-                    self.samples[chan] = len(pulse_array)
+                        self.pulses[chan] = pulse
 
+
+                    # Calculate last sample by taking the last pulse item for a given channel (pulse[-1]), and adding the start time 
+                    # pulse[-1][0] with the length of that last pulse array len(pulse[-1][1]).
+                    self.samples[chan] = pulse[-1][0] + len(pulse[-1][1])
+
+                    
+                    ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
+                    print('chan:',chan, 'start time of last pulse elem:', pulse[-1][0])
+                    print('chan:',chan, 'length of last pulse elem', len(pulse[-1][1]))
+                    #####
+                    
+                
+                ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###   
+                print('chan:',chan, 'sample is self.sample', self.samples[chan])
+                #####
+                
                 for chan, phase in phases.items():
                     if chan in self.phases.keys():
                         # Check if channel is already present in pulses to append new data
                         # Else, add channel to pulses.
                         '''TODO: Need to be careful here. Gotta check if there is phaseshift overlap bw last elem in self.phases
                                  and the first elem being appended from the native gate to. The new one should replace old one'''
-                        phase_array = self.phases[chan] + phase
+                        self.phases[chan] = self.phases[chan] + phase
                     else:
-                        phase_array = phase
-                    self.phases[chan] = phase_array
+                        self.phases[chan] = phase
 
                 '''NOTE: Don't have a for loop for freq.items() here bc pulses from native gates in qiskit don't contain
                          that type of instruction. Might need to add later for other backends?'''
