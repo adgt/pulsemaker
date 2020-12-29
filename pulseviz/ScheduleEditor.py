@@ -321,7 +321,7 @@ class ScheduleEditor(widgets.VBox):
         self._current_qubits = ['q0','q0']      # qubit(s) currently selected. If a single-qubit gate is selected, then 
                                                 # both elements in the list take the same value ['qx','qx'] (qx is currently selecte qubit)
                                                 # If two-qubit gate (CX) is selected: ['qx','qy'] where CX is applied from qx to qy.
-        self._current_chann = ['d0','d0','d0']  # list of current channel selections for [phase,freq,pulse]
+        self._current_chann = 'd0'              # list of current channel selections for phase,freq,pulse based on selected op type
         self._current_phase = 0
         self._current_freq = 0
         self._current_pulse = np.array([])
@@ -355,128 +355,97 @@ class ScheduleEditor(widgets.VBox):
 
         # Dropdown menu for backend
         backend_input_dd = widgets.Dropdown(options=backend_input_lst, 
-                                            layout=widgets.Layout(width='auto'),
+#                                             layout=widgets.Layout(width='auto'),
                                             continuous_update=False,
                                             disabled=False)
 
         # Dropdown menu for waveform input
         schedule_input_dd = widgets.Dropdown(options=schedule_input_lst, 
-                                             layout=widgets.Layout(width='auto'),
+#                                              layout=widgets.Layout(width='auto'),
                                              continuous_update=False,
                                              disabled=False)
 
         # Dropdown menu for native gate selection
         nativegate_input_dd = widgets.Dropdown(options=nativegate_input_lst[0:len(nativegate_input_lst)-1], 
                                                layout=widgets.Layout(width='160px'),
-                                               description='From Gate:',
                                                continuous_update=False,
                                                disabled=False)
-
-        # Dropdown menu for qubit selection to native gate schedule to main schedule
-        nativegate_qubit_dd = widgets.Dropdown(options=self._backend_qubit_lst, 
-                                               layout=widgets.Layout(width='160px'),
-                                               description='Append to:',
-                                               continuous_update=False,
-                                               disabled=False)
-
-        # Button to append native gate schedule to main schedule
-        nativegate_append_btn = widgets.Button(description='Append',
-                                               icon='',
-                                               button_style='', # 'success', 'info', 'warning', 'danger' or ''
-                                               layout=widgets.Layout(width='80px'),
-                                               disabled=False)
-        nativegate_append_btn.name = 'nativegate_btn'
-
-        # Box for nativegate-related widgets:
-        nativegate_pannel = widgets.VBox([nativegate_input_dd,
-                                          widgets.HBox([nativegate_qubit_dd,nativegate_append_btn])])
 
         # Floating Textbox for Phase Shift input
         '''TODO: Need to be able to pass multiples of np.pi or pi'''
         shiftphase_input_fltxt = widgets.BoundedFloatText(value=0.0, min=0.0, max=1.0, step=0.001,
-                                                           layout=widgets.Layout(width='245px'),
-                                                           description='Phase [1/(2π)]:',
+                                                           layout=widgets.Layout(width='160px'),
                                                            disabled=False)
-
-        # Dropdown menu for channel selection to append Phase Shift schedule
-        shiftphase_chan_dd = widgets.Dropdown(options=self._backend_chan_lst, 
-                                              layout=widgets.Layout(width='160px'),
-                                              description='Append to:',
-                                              continuous_update=False,
-                                              disabled=False)
-
-        # Button to append Phase Shift to schedule
-        shiftphase_append_btn = widgets.Button(description='Append',
-                                               icon='',
-                                               button_style='',
-                                               layout=widgets.Layout(width='80px'),
-                                               disabled=False)
-        shiftphase_append_btn.name = 'shiftphase_btn'
-
-        # Box for PhaseShift-related widgets:
-        shiftphase_pannel = widgets.VBox([shiftphase_input_fltxt,
-                                          widgets.HBox([shiftphase_chan_dd,shiftphase_append_btn])])
 
         # Floating Textbox for Frequency value input
         shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.75, min=4.0, max=5.5, step=0.001,
-                                                          layout=widgets.Layout(width='245px'),
-                                                          description='Freq [GHz]:',
+                                                          layout=widgets.Layout(width='160px'),
                                                           disabled=False)
+        
+        # Dropdown menu for pulse array selection
+        pulse_input_dd = widgets.Dropdown(options=pulse_input_lst, 
+                                          layout=widgets.Layout(width='160px'),
+                                          continuous_update=False,
+                                          disabled=False)
 
-         # Dropdown menu for channel selection to append Frequency value schedule
-        shiftfreq_chan_dd = widgets.Dropdown(options=self._backend_chan_lst, 
+
+         # Dropdown menu for channel selection to append to schedule
+        append_to_dd = widgets.Dropdown(options=self._backend_chan_lst, 
                                              layout=widgets.Layout(width='160px'),
                                              description='Append to:',
                                              continuous_update=False,
                                              disabled=False)
 
-        # Button to append Frequency value to schedule
-        shiftfreq_append_btn = widgets.Button(description='Append',
-                                              icon='',
-                                              button_style='',
+        # Button to append selected value to schedule
+        append_to_btn = widgets.Button(description='Append',
                                               layout=widgets.Layout(width='80px'),
                                               disabled=False)
-        shiftfreq_append_btn.name = 'shiftfreq_btn'
 
-        # Box for FreqValue-related widgets:
-        shiftfreq_pannel = widgets.VBox([shiftfreq_input_fltxt,
-                                          widgets.HBox([shiftfreq_chan_dd,shiftfreq_append_btn])])
+        def toggle_append_type(change):
+            append_type = change['owner'].options.index(change['new'])
+            nativegate_input_dd.disabled = True
+            shiftphase_input_fltxt.disabled = True
+            shiftfreq_input_fltxt.disabled = True
+            pulse_input_dd.disabled = True
+            
+            if append_type == 0:
+                nativegate_input_dd.disabled = False
+                append_to_dd.options = self._backend_qubit_lst
+            elif append_type == 1:
+                shiftphase_input_fltxt.disabled = False
+                append_to_dd.options = self._backend_chan_lst
+            elif append_type == 2:
+                shiftfreq_input_fltxt.disabled = False
+                append_to_dd.options = self._backend_chan_lst            
+            elif append_type == 3:
+                pulse_input_dd.disabled = False
+                append_to_dd.options = self._backend_chan_lst
 
-        # Dropdown menu for pulse array selection
-        pulse_input_dd = widgets.Dropdown(options=pulse_input_lst, 
-                                          layout=widgets.Layout(width='245px'),
-                                          description='Pulse:',
-                                          continuous_update=False,
-                                          disabled=False)
+        append_type_radio = widgets.RadioButtons(
+            options=['From Gate:', 'Phase [1/(2π)]:', 'Freq [GHz]:', 'Pulse:'],
+           layout=widgets.Layout(width='max-content', display='flex', flex='1 0 auto'), # If the items' names are long
+        )
+        append_type_radio.observe(toggle_append_type, names='value');
+        toggle_append_type({'new': append_type_radio.value, 'owner': append_type_radio}) # call it once to initialize
 
-         # Dropdown menu for channel selection to append pulse to schedule
-        pulse_chan_dd = widgets.Dropdown(options=self._backend_chan_lst, 
-                                         layout=widgets.Layout(width='160px'),
-                                         description='Append to:',
-                                         continuous_update=False,
-                                         disabled=False)
+        append_type_panel = widgets.VBox([widgets.HBox([append_type_radio,
+                                              widgets.VBox([nativegate_input_dd, 
+                                                            shiftphase_input_fltxt,
+                                                            shiftfreq_input_fltxt,
+                                                            pulse_input_dd])]),
+                                          widgets.HBox([append_to_dd,
+                                                       append_to_btn],
+                                                      layout=widgets.Layout(justify_content='space-between', margin='40px 0px 0px 0px'))])
 
-        # Button to append pulse to schedule
-        pulse_append_btn = widgets.Button(description='Append',
-                                          icon='',
-                                          button_style='',
-                                          layout=widgets.Layout(width='80px'),
-                                          disabled=False)
-        pulse_append_btn.name = 'pulse_btn'
-        
         clear_btn = widgets.Button(description='Clear',
                                    layout=widgets.Layout(width='auto', height='auto'))
                                    
-        # Box for pulse-related widgets:
-        pulse_pannel = widgets.VBox([pulse_input_dd,
-                                          widgets.HBox([pulse_chan_dd,pulse_append_btn])])
-
         # Combines all dropdown menus in a left panel
         left_panel = widgets.VBox([widgets.Label("Backend:"), backend_input_dd,
                                    widgets.Label("Input:"), schedule_input_dd,
                                    widgets.HBox([widgets.Label("Schedule:"), clear_btn],
                                                  layout=widgets.Layout(justify_content='space-between')),
-                                   nativegate_pannel, shiftphase_pannel, shiftfreq_pannel,pulse_pannel])
+                                   append_type_panel])
 
         
         ### Widget Interactions ###
@@ -501,25 +470,28 @@ class ScheduleEditor(widgets.VBox):
             else:
                 self._backend_cmap_nms = None
 
-            print(self._backend_cmap_nms)
+#             print(self._backend_cmap_nms)
 
             nativegate_input_dd.options = nativegate_input_lst
-            nativegate_qubit_dd.options = self._backend_qubit_lst
-            shiftphase_chan_dd.options = self._backend_chan_lst
-            shiftfreq_chan_dd.options = self._backend_chan_lst
-            pulse_chan_dd.options = self._backend_chan_lst
-
+            if not nativegate_input_dd.disabled:
+                append_to_dd.options = self._backend_qubit_lst
+            elif not shiftphase_input_fltxt.disabled:
+                append_to_dd.options = self._backend_chan_lst
+            elif not shiftfreq_input_fltxt.disabled:
+                append_to_dd.options = self._backend_chan_lst  
+            elif not pulse_input_dd.disabled:
+                append_to_dd.options = self._backend_chan_lst
 
         backend_input_dd.observe(update_dd_options, 'value')          
 
-        # Update Schedule when append buttons are pressed
+        # Update Schedule when append button is pressed
         def update_schedule(b):
             '''NOTE: Not sure if I need _current_phase, _current_freq or if I should just use 
                      the values from the widgets directly:'''
             self._current_phase = 2*np.pi*shiftphase_input_fltxt.value
             self._current_freq = 1e9*shiftfreq_input_fltxt.value
 
-            if b.name == 'nativegate_btn':
+            if not nativegate_input_dd.disabled:
                 '''TODO: Will need to add conditionals here depending on the provider. Right now, everythin is qiskit
                          so only calling qiskit_gate_to_sched() function to make translations'''
                 
@@ -553,19 +525,19 @@ class ScheduleEditor(widgets.VBox):
                 '''NOTE: Don't have a for loop for freq.items() here bc pulses from native gates in qiskit don't contain
                          that type of instruction. Might need to add later for other backends?'''
 
-            elif b.name == 'shiftphase_btn':
-                if self._current_chann[0] in self.samples.keys():
-                    current_sample = self.samples[self._current_chann[0]]
+            elif not shiftphase_input_fltxt.disabled:
+                if self._current_chann in self.samples.keys():
+                    current_sample = self.samples[self._current_chann]
                 else:
                     current_sample = 0
 
                 phase = [current_sample, self._current_phase]
 
-                if self._current_chann[0] in self.phases.keys():
+                if self._current_chann in self.phases.keys():
                     # Check if channel is already present in phases to append/replace new data
                     # Else, add channel to phases.
                     
-                    phase_array = self.phases[self._current_chann[0]]
+                    phase_array = self.phases[self._current_chann]
 
                     if phase_array[-1][0] == current_sample:
                         # If sample number hasn't changed, replace PhaseShift value
@@ -576,20 +548,20 @@ class ScheduleEditor(widgets.VBox):
                 else:
                     phase_array = [phase]
 
-                self.phases[self._current_chann[0]] = phase_array
+                self.phases[self._current_chann] = phase_array
 
-            elif b.name == 'shiftfreq_btn':
-                if self._current_chann[1] in self.samples.keys():
-                    current_sample = self.samples[self._current_chann[1]]
+            elif not shiftfreq_input_fltxt.disabled:
+                if self._current_chann in self.samples.keys():
+                    current_sample = self.samples[self._current_chann]
                 else:
                     current_sample = 0
 
                 freq = [current_sample, self._current_freq]
 
-                if self._current_chann[1] in self.freqs.keys():
+                if self._current_chann in self.freqs.keys():
                     # Check if channel is already present in freqs to append/replace new data
                     # Else, add channel to freqs.
-                    freq_array = self.freqs[self._current_chann[1]]
+                    freq_array = self.freqs[self._current_chann]
 
                     if freq_array[-1][0] == current_sample:
                         # If sample number hasn't changed, replace Frequency value
@@ -600,9 +572,9 @@ class ScheduleEditor(widgets.VBox):
                 else:
                     freq_array = [freq]
 
-                self.freqs[self._current_chann[1]] = freq_array
+                self.freqs[self._current_chann] = freq_array
 
-            elif b.name == 'pulse_btn':
+            elif not pulse_input_dd.disabled:
                 '''
                 TODO: Need to add padding option (add dotted line of where schedule stands on each channel?)
                          Best way might be to add padding for visualization in the plot_sch function, but keep
@@ -612,58 +584,55 @@ class ScheduleEditor(widgets.VBox):
                 '''
                 pulse = self.dummy_pulse 
 
-                if self._current_chann[2] in self.pulses.keys():
+                if self._current_chann in self.pulses.keys():
                     # Check if channel is already present in pulses to append new data
                     # Else, add channel to pulses.
-                    pulse_array = np.append(self.pulses[self._current_chann[2]],pulse)
+                    pulse_array = np.append(self.pulses[self._current_chann],pulse)
                 else:
                     pulse_array = pulse
 
-                self.pulses[self._current_chann[2]] = pulse_array
-                self.samples[self._current_chann[2]] = len(pulse_array)
+                self.pulses[self._current_chann] = pulse_array
+                self.samples[self._current_chann] = len(pulse_array)
 
             self.update()
 
-        append_btns = [nativegate_append_btn, shiftphase_append_btn, shiftfreq_append_btn, pulse_append_btn]
-        for btn in append_btns:
-            btn.on_click(update_schedule)
+        append_to_btn.on_click(update_schedule)
         
         '''
         NOTE: Don't know if I really need the update_channels() and update_qubits() functions. I might be OK just working with
               the .value items of each widget instead of saving them in the self._current_chann & self._current_qbuit lists.
               In particular, the update_qubits function might be redundant. Could do the same inside the qiskit_gate_to_sched() function
-              by just passing nativegate_qubit_dd.value directly.
+              by just passing append_to_dd.value directly.
               Only reason to have them might be to support backends from other companies? (e.g. Rigetti)
         '''
 
         # Update current Channels based on values of dropdown menus
         '''NOTE: can I use a labmda function here to avoid the extra definition?'''
         def update_channels(*args):
-            self._current_chann = [shiftphase_chan_dd.value, shiftfreq_chan_dd.value, pulse_chan_dd.value]
+            self._current_chann = append_to_dd.value
 
-        chan_dds = [shiftphase_chan_dd, shiftfreq_chan_dd, pulse_chan_dd]
-        for chan in chan_dds:
-            chan.observe(update_channels, 'value')
+        append_to_dd.observe(update_channels, 'value')
 
-        # Update self._current_qubits based on value of the nativegate_qubit_dd dropdown menu
+        # Update self._current_qubits based on value of the dropdown menu
         def update_curr_qubits(*args):
-            if nativegate_input_dd.value == 'CX':
-                qubits_indx = self._backend_cmap_nms.index(nativegate_qubit_dd.value)
-                qb_pair = self._backend_cmap_lst[qubits_indx]
-                self._current_qubits = ['q'+str(qb) for qb in qb_pair]
-                
-            else: 
-                self._current_qubits = [nativegate_qubit_dd.value, nativegate_qubit_dd.value]
-            print(self._current_qubits)
+            if not nativegate_input_dd.disabled:
+                if nativegate_input_dd.value == 'CX':
+                    qubits_indx = self._backend_cmap_nms.index(append_to_dd.value)
+                    qb_pair = self._backend_cmap_lst[qubits_indx]
+                    self._current_qubits = ['q'+str(qb) for qb in qb_pair]
 
-        nativegate_qubit_dd.observe(update_curr_qubits, 'value')
+                else: 
+                    self._current_qubits = [append_to_dd.value, append_to_dd.value]
+#                 print(self._current_qubits)
+
+        append_to_dd.observe(update_curr_qubits, 'value')
 
         # Update dropdown options for qubit selection based on single-qubit or two-qubit gate
         def update_dd_qubits(*args):
             if nativegate_input_dd.value == 'CX':
-                nativegate_qubit_dd.options = self._backend_cmap_nms
+                append_to_dd.options = self._backend_cmap_nms
             else:
-                nativegate_qubit_dd.options = self._backend_qubit_lst
+                append_to_dd.options = self._backend_qubit_lst
 
         nativegate_input_dd.observe(update_dd_qubits, 'value')
 
