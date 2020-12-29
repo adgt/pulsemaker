@@ -4,6 +4,7 @@ from matplotlib import gridspec
 import ipywidgets as widgets
 from IPython.display import display
 
+
 # Function to generate qubit, channel and coupling map lists based on selected backend
 def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
 
@@ -178,6 +179,29 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
 
     return phases, freqs, pulses
 
+# Function to "pad" channels up to the max sample in all of them
+def pad_channels(phases, freqs, pulses):
+    phase_chans = set(phases.keys())
+    freq_chans = set(freqs.keys())
+    pulse_chans = set(pulses.keys())
+    all_chans = set.union(phase_chans,freq_chans,pulse_chans)
+
+    max_samp = 0
+
+    # Find largest sample point
+    for chan, pulse in pulses.items():
+        last_chan_samp = pulse[-1][0]+len(pulse[-1][1])
+        max_samp = max(max_samp,last_chan_samp)
+
+    for chan in all_chans:
+        if chan not in pulses.keys():
+            pulses[chan] = [[max_samp-1, np.array([0])]]
+        else:
+            if pulses[chan][-1][0]+len(pulse[-1][1]) < max_samp:
+                pulses[chan] = pulses[chan] + [[max_samp-1, np.array([0])]]
+        
+    return pulses
+
 def plot_pulse_schedule(phases, freqs, pulses, samples):
     # Function to draw/update schedule plot
     def _plot(phases,freqs,pulses,samples):
@@ -250,14 +274,17 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
                 i_sig = np.append(i_sig,np.real(pulse[1]))
                 q_sig = np.append(q_sig,np.imag(pulse[1]))
 
-                
+                '''
                 ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
                 print('chan:',chan[0] ,'pulse start time:', pulse[0])
                 print('chan:',chan[0] ,'curr sample bf update', current_plot_sample)
+                '''
                 current_plot_sample = len(i_sig)
+                '''
+                ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
                 print('chan:',chan[0] ,'curr sample af update', current_plot_sample)
                 #####
-                
+                '''
 
             samps = i_sig.size
             t = np.linspace(0,samps,samps)
@@ -550,6 +577,8 @@ class ScheduleEditor(widgets.VBox):
                 qiskit_gate_sch = qiskit_gate_to_sched(backend_input_dd.value, nativegate_input_dd.value, self._current_qubits, num_qbs)
                 phases, freqs, pulses = qiskit_to_schedviz(qiskit_gate_sch, self.samples)
 
+                pulses = pad_channels(phases, freqs, pulses)
+
                 for chan, pulse in pulses.items():
                     if chan in self.pulses.keys():
                         # Check if channel is already present in pulses to append new data
@@ -563,20 +592,17 @@ class ScheduleEditor(widgets.VBox):
                     # pulse[-1][0] with the length of that last pulse array len(pulse[-1][1]).
                     self.samples[chan] = pulse[-1][0] + len(pulse[-1][1])
 
-                    
+                    '''
                     ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
                     print('chan:',chan, 'start time of last pulse elem:', pulse[-1][0])
                     print('chan:',chan, 'length of last pulse elem', len(pulse[-1][1]))
+                    print('chan:',chan, 'sample is self.sample', self.samples[chan])
                     #####
-                    
-                
-                ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###   
-                print('chan:',chan, 'sample is self.sample', self.samples[chan])
-                #####
-                
+                    '''
+
                 for chan, phase in phases.items():
                     if chan in self.phases.keys():
-                        # Check if channel is already present in pulses to append new data
+                        # Check if channel is already present in phases to append new data
                         # Else, add channel to pulses.
                         '''TODO: Need to be careful here. Gotta check if there is phaseshift overlap bw last elem in self.phases
                                  and the first elem being appended from the native gate to. The new one should replace old one'''
