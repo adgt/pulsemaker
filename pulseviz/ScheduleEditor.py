@@ -123,8 +123,63 @@ def qiskit_gate_to_sched(backend_name, gate_name, qubits, num_qbs):
     trans_circuit = transpile(circuit, backend)
     return build_schedule(trans_circuit, backend)
 
+# Function to "pad" channels up to the max sample in all of them
+def pad_channels(pulses, chans_to_pad):
 
-# Function to translate qiskit-schedule to scheduler-editor format
+    max_samp = 0
+
+    # Find largest sample point
+    for chan, pulse in pulses.items():
+        last_chan_samp = pulse[-1][0]+len(pulse[-1][1])
+        max_samp = max(max_samp,last_chan_samp)
+
+    for chan in chans_to_pad:
+        if chan not in pulses.keys():
+            pulses[chan] = [[max_samp-1, np.array([0])]]
+        else:
+            if pulses[chan][-1][0]+len(pulse[-1][1]) < max_samp:
+                pulses[chan] = pulses[chan] + [[max_samp-1, np.array([0])]]
+        
+    return pulses
+
+
+# Function that pads schedule before a gate is applied
+'''
+NOTE: I Need to incorporate padding on self.pulse of only the channels that are part of in the gate being added. 
+      For this, I need to first identify the channels, pad them, and then continue to the qiskit to ScheduleEditor 
+      translation. The way I am doing it right now is by incorporating this this pad_before_gate() function. 
+      There might be a more efficient way to do this inside the qiskit_to_schedviz() function.
+'''  
+def pad_before_gate(qiskit_sch, pulses, samples):
+    try:
+        from qiskit.pulse import Play, SetFrequency, ShiftPhase
+        from qiskit.pulse.channels import DriveChannel, ControlChannel
+
+    except ImportError:
+        pass    
+
+    gate_chans = []
+
+    for start_time, instruction in qiskit_sch.instructions:
+
+        if isinstance(instruction.channel, DriveChannel):
+            gate_chans.append('d'+str(instruction.channel.index))
+        elif isinstance(instruction.channel, ControlChannel):
+            gate_chans.append('u'+str(instruction.channel.index))
+        else:
+            '''TODO: Might need to add support for other channels, like measure, acquire, etc'''
+            pass
+    
+    gate_chans = set(gate_chans)
+    pulses = pad_channels(pulses, gate_chans)
+
+    for chan, pulse in pulses.items():
+        samples[chan] = pulse[-1][0] + len(pulse[-1][1])
+
+    return pulses, samples
+    
+
+# Function to translate qiskit-schedule to scheduler-editor format    
 def qiskit_to_schedviz(qiskit_sch, current_samples):
     try:
         from qiskit.pulse import Play, SetFrequency, ShiftPhase
@@ -179,28 +234,6 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
 
     return phases, freqs, pulses
 
-# Function to "pad" channels up to the max sample in all of them
-def pad_channels(phases, freqs, pulses):
-    phase_chans = set(phases.keys())
-    freq_chans = set(freqs.keys())
-    pulse_chans = set(pulses.keys())
-    all_chans = set.union(phase_chans,freq_chans,pulse_chans)
-
-    max_samp = 0
-
-    # Find largest sample point
-    for chan, pulse in pulses.items():
-        last_chan_samp = pulse[-1][0]+len(pulse[-1][1])
-        max_samp = max(max_samp,last_chan_samp)
-
-    for chan in all_chans:
-        if chan not in pulses.keys():
-            pulses[chan] = [[max_samp-1, np.array([0])]]
-        else:
-            if pulses[chan][-1][0]+len(pulse[-1][1]) < max_samp:
-                pulses[chan] = pulses[chan] + [[max_samp-1, np.array([0])]]
-        
-    return pulses
 
 def plot_pulse_schedule(phases, freqs, pulses, samples):
     # Function to draw/update schedule plot
@@ -248,11 +281,11 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
                 plt.setp(ax[chan_num].get_xticklabels(), visible=False)
 
             ''' TODO: Axis settings. Still need to decide how they should look like '''
-            ax[chan_num].text(0,0, chan[0], horizontalalignment='center',verticalalignment='center', fontweight='bold')
+            ###ax[chan_num].text(0,0, chan[0], horizontalalignment='center',verticalalignment='center', fontweight='bold')
             ax[chan_num].tick_params(axis='y', which='major', labelsize=7)
             #ax[chan_num].tick_params(axis="y",direction="in", pad=-22)
             #ax[chan_num].get_yaxis().set_ticks([])
-            #ax[chan_num].set_ylabel(chan+'  ', rotation=0, fontweight='bold')
+            ax[chan_num].set_ylabel(chan[0]+'  ', rotation=0, fontweight='bold')
 
             # Construct real/imag signals to be plotted
             pulses_lst = chan[1]
@@ -543,7 +576,8 @@ class ScheduleEditor(widgets.VBox):
         # Update dropdown options for gates and channels based on selected backend
         def update_dd_options(*args):
             current_backend = backend_input_dd.value
-            self._backend_qubit_lst, self._backend_chan_lst, self._backend_cmap_lst, nativegate_input_lst = qiskit_backend_config(current_backend, backend_input_lst, backend_qnum_lst)
+            self._backend_qubit_lst, self._backend_chan_lst, self._backend_cmap_lst, \
+            nativegate_input_lst = qiskit_backend_config(current_backend, backend_input_lst, backend_qnum_lst)
 
             self._backend_cmap_nms = []
             if self._backend_cmap_lst is not None:
@@ -575,10 +609,18 @@ class ScheduleEditor(widgets.VBox):
                 num_qbs = backend_qnum_lst[backend_indx]
                 
                 qiskit_gate_sch = qiskit_gate_to_sched(backend_input_dd.value, nativegate_input_dd.value, self._current_qubits, num_qbs)
+                
+                # Pad before gate is applied
+                self.pulses, self.samples = pad_before_gate(qiskit_gate_sch, self.pulses, self.samples)
+                
                 phases, freqs, pulses = qiskit_to_schedviz(qiskit_gate_sch, self.samples)
 
-                pulses = pad_channels(phases, freqs, pulses)
+                # Channels to be padded
+                gate_chans = set.union(set(phases.keys()),set(freqs.keys()),set(pulses.keys()))
 
+                # Pad after gate sch is appened to full schedule
+                pulses = pad_channels(pulses, gate_chans)
+                
                 for chan, pulse in pulses.items():
                     if chan in self.pulses.keys():
                         # Check if channel is already present in pulses to append new data
@@ -587,11 +629,10 @@ class ScheduleEditor(widgets.VBox):
                     else:
                         self.pulses[chan] = pulse
 
-
                     # Calculate last sample by taking the last pulse item for a given channel (pulse[-1]), and adding the start time 
                     # pulse[-1][0] with the length of that last pulse array len(pulse[-1][1]).
                     self.samples[chan] = pulse[-1][0] + len(pulse[-1][1])
-
+                    
                     '''
                     ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
                     print('chan:',chan, 'start time of last pulse elem:', pulse[-1][0])
@@ -599,7 +640,7 @@ class ScheduleEditor(widgets.VBox):
                     print('chan:',chan, 'sample is self.sample', self.samples[chan])
                     #####
                     '''
-
+                
                 for chan, phase in phases.items():
                     if chan in self.phases.keys():
                         # Check if channel is already present in phases to append new data
