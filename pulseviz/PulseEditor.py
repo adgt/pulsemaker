@@ -45,27 +45,22 @@ def _wf_eq(wf_type, amp, width, t):
     return sig
 
 # function that generates waveforms depending on input selected
-def _sig_gen(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
+def _sig_gen(i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
     
     width = 1 # scaling in x. For sine/cos is equivalent to frequency
     
     t = np.linspace(0,samples,samples)
     
-    if wf_in == 'Custom Waveform':
-        i_sig = _wf_eq(i_wf,i_amp,i_width,t)
-        q_sig = _wf_eq(q_wf,q_amp,q_width,t)
-    else:
-        i_sig = np.zeros(t.size)
-        q_sig = np.zeros(t.size)
+    i_sig = _wf_eq(i_wf,i_amp,i_width,t)
+    q_sig = _wf_eq(q_wf,q_amp,q_width,t)
 
     return t, i_sig, q_sig
 
 # Waveform plotting function
-def _plot_wf(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
+def _plot_wf(i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
     
-    t, i_sig, q_sig = _sig_gen(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width)
+    t, i_sig, q_sig = _sig_gen(i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width)
     
-    #w, h = mpl.figure.figaspect(2.)
     _, axs = plt.subplots(2, sharex=True, figsize=(12,5), tight_layout=True)
     axs[1].set_xlabel('time t/dt')
     axs[0].set_ylabel('In-Phase Amplitude')
@@ -112,6 +107,7 @@ global my_pulse
 class PulseEditor(widgets.VBox):
 
     def setup_config(self):
+
         # Parameters
         self.backend_lst = ['Armonk', 'Almaden']                              # Backends that support Pulse
         self.input_lst = ['Custom Waveform', 'Import from Native', 'Import from Array']                                  # Waveform input options
@@ -133,21 +129,6 @@ class PulseEditor(widgets.VBox):
 
         # Maximum amplitude for quadrature signal. Needs to be interactive bc depends on in-phase amplitude
         self.q_amp_max_fxd = widgets.fixed(value=0.0)
-
-    def setup_backends(self):
-        self.backends = \
-            widgets.Dropdown(
-                options=self.backend_lst, 
-                layout=widgets.Layout(width='auto', visibility='hidden'),
-                description='Backend: ',
-            )
-    def setup_array_import(self):
-        self.array_import = \
-            widgets.Dropdown(
-                options=[1,2,3],
-                description='Placeholder',
-                disabled=True
-            )
 
     def setup_custom_waveform_input(self):
         self.i_wf_dd = widgets.Dropdown(
@@ -224,68 +205,33 @@ class PulseEditor(widgets.VBox):
 
         self.custom_wf_controls = [self.i_wf_dd, self.q_wf_dd, self.samples_sldr, self.i_width_sldr, self.q_width_sldr, self.i_amp_sldr, self.q_amp_sldr]
 
-    def setup_wf_input(self):
-        
-        # Dropdown menu for waveform input
-        self.wf_input = \
-            widgets.Dropdown(
-                options=self.input_lst, 
-                layout=widgets.Layout(width='auto'),
-                description='Input: '
-            )
-
-        def on_value_change(change):
-            new_val = change['new']
-
-            if new_val == 'Import from Native':
-                self.backends.layout.visibility='visible'
-                for control in self.custom_wf_controls:
-                    control.disabled=True
-            elif new_val == 'Import from Array':
-                return
-            else:
-                self.backends.layout.visibility='hidden'
-                for control in self.custom_wf_controls:
-                    control.disabled=False
-
-        self.wf_input.observe(on_value_change, 'value')
+    
 
     def setup_observers(self):
 
         # Change number of min/max samples based on backend selected
         '''TO DO: Right now, min/max/value samples below were manually plugged in, 
         but need to get them from actual backends.'''
-        def update_samples(backend_change):
-            new_backend = backend_change['new']
-            if new_backend == 'Almaden':
-                (self.samples_sldr.min, self.samples_sldr.value, self.samples_sldr.max) = (10, 160, 320)
-            if new_backend == 'Armonk':
-                (self.samples_sldr.min, self.samples_sldr.value, self.samples_sldr.max) = (10, 640, 1280)        
-
-        self.backends.observe(update_samples, 'value')
-
         # Updates max allowable value of Quadrature amplitude
         def update_qamp_max(*args):
-            if self.wf_input.value == 'Custom Waveform':
 
-                # Here to calculate q_sig I am passing an arbitrary amplitude (10*amp_res_val) because q_sig is only needed
-                # to find the indices of the maxima of the currently-selected function. If I pass the current
-                # q_amp (q_amp_sldr.value), there is a change it will be zero and no correct maxima are found
-                t, i_sig, q_sig = _sig_gen(self.wf_input.value, self.i_wf_dd.value, self.q_wf_dd.value, 
-                                        self.samples_sldr.value, self.i_amp_sldr.value, 10*self.amp_res_val,
-                                        self.i_width_sldr.value, self.q_width_sldr.value)
+            # Here to calculate q_sig I am passing an arbitrary amplitude (10*amp_res_val) because q_sig is only needed
+            # to find the indices of the maxima of the currently-selected function. If I pass the current
+            # q_amp (q_amp_sldr.value), there is a change it will be zero and no correct maxima are found
+            t, i_sig, q_sig = _sig_gen(self.i_wf_dd.value, self.q_wf_dd.value, 
+                                    self.samples_sldr.value, self.i_amp_sldr.value, 10*self.amp_res_val,
+                                    self.i_width_sldr.value, self.q_width_sldr.value)
 
-                q_amp_max = find_qamp_max(i_sig,q_sig)
+            q_amp_max = find_qamp_max(i_sig,q_sig)
 
-                if q_amp_max < self.amp_res_val:
-                    self.q_amp_sldr.value = 0
-                    self.q_amp_sldr.disabled = True
-                else:
-                    self.q_amp_sldr.max = q_amp_max
-                    self.q_amp_sldr.min = -q_amp_max
-                    self.q_amp_sldr.disabled = False
+            if q_amp_max < self.amp_res_val:
+                self.q_amp_sldr.value = 0
+                self.q_amp_sldr.disabled = True
+            else:
+                self.q_amp_sldr.max = q_amp_max
+                self.q_amp_sldr.min = -q_amp_max
+                self.q_amp_sldr.disabled = False
 
-        self.wf_input.observe(update_qamp_max, 'value')
         self.i_wf_dd.observe(update_qamp_max, 'value')
         self.q_wf_dd.observe(update_qamp_max, 'value')
         self.samples_sldr.observe(update_qamp_max, 'value')
@@ -337,8 +283,7 @@ class PulseEditor(widgets.VBox):
     def plot_figure(self):
         self.fig_out = widgets.interactive_output(
             _plot_wf, 
-            {'wf_in':self.wf_input, 
-            'i_wf':self.i_wf_dd, 
+            {'i_wf':self.i_wf_dd, 
             'q_wf':self.q_wf_dd,
             'samples':self.samples_sldr,
             'i_amp':self.i_amp_sldr,
@@ -351,42 +296,30 @@ class PulseEditor(widgets.VBox):
     def __init__(self):
 
         self.setup_config()
-        self.setup_backends()
-        self.setup_array_import()
         self.setup_custom_waveform_input()
-        self.setup_wf_input()
         self.setup_observers()
         self.plot_figure()
 
-        """ lyt = widgets.Layout(display='flex',
-                flex_flow='column',
-                align_items='center') """
         # Button to save pulse to array
         self.save_btn = widgets.Button(
             description='Save to my_pulse',
             icon='check',
             button_style='info',
             disabled=False,
-            layout=widgets.Layout(width='auto')
+            layout=widgets.Layout(width='150px')
         )
         def on_button_clicked(b):
-            if self.wf_input.value == 'Custom Waveform':
-                t, i_sig, q_sig = _sig_gen(self.wf_input.value, self.i_wf_dd.value, self.q_wf_dd.value, 
-                                        self.samples_sldr.value, self.i_amp_sldr.value, self.q_amp_sldr.value,
-                                        self.i_width_sldr.value, self.q_width_sldr.value)
-                
-                my_pulse = i_sig + 1j*q_sig
+            t, i_sig, q_sig = _sig_gen(self.i_wf_dd.value, self.q_wf_dd.value, 
+                                    self.samples_sldr.value, self.i_amp_sldr.value, self.q_amp_sldr.value,
+                                    self.i_width_sldr.value, self.q_width_sldr.value)
+            
+            my_pulse = i_sig + 1j*q_sig
 
         self.save_btn.on_click(on_button_clicked)
 
         super().__init__([
-            widgets.HBox([
-                self.wf_input,
-                self.backends,
-                self.save_btn
-            ],
-            layout=widgets.Layout(display='flex', justify_content='flex-start')),
             self.custom_wf_hbox,
-            self.fig_out
+            self.fig_out,
+            self.save_btn,
         ])
 
