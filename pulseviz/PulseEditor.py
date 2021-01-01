@@ -1,13 +1,13 @@
+import enum
 import numpy as np
 import matplotlib.pyplot as plt
 import ipywidgets as widgets
 from IPython.display import display
+import matplotlib as mpl
 # %matplotlib inline
 # %config InlineBackend.figure_format = 'svg'
 
-
-# Fuction that evaluates waveform equation depending on waveform type selection
-def wf_eq(wf_type, amp, width, t):
+def _wf_eq(wf_type, amp, width, t):
     
     samps = t.size
     
@@ -45,20 +45,46 @@ def wf_eq(wf_type, amp, width, t):
     return sig
 
 # function that generates waveforms depending on input selected
-def sig_gen(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
+def _sig_gen(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
     
     width = 1 # scaling in x. For sine/cos is equivalent to frequency
     
     t = np.linspace(0,samples,samples)
     
     if wf_in == 'Custom Waveform':
-        i_sig = wf_eq(i_wf,i_amp,i_width,t)
-        q_sig = wf_eq(q_wf,q_amp,q_width,t)
+        i_sig = _wf_eq(i_wf,i_amp,i_width,t)
+        q_sig = _wf_eq(q_wf,q_amp,q_width,t)
     else:
         i_sig = np.zeros(t.size)
         q_sig = np.zeros(t.size)
 
     return t, i_sig, q_sig
+
+# Waveform plotting function
+def _plot_wf(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
+    
+    t, i_sig, q_sig = _sig_gen(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width)
+    
+    #w, h = mpl.figure.figaspect(2.)
+    _, axs = plt.subplots(2, sharex=True, figsize=(12,5), tight_layout=True)
+    axs[1].set_xlabel('time t/dt')
+    axs[0].set_ylabel('In-Phase Amplitude')
+    axs[1].set_ylabel('Quadrature Amplitude')
+    axs[0].set_xlim(0, samples)
+    axs[0].set_ylim(-(abs(i_amp)+0.1),abs(i_amp)+0.1)
+    axs[1].set_ylim(-(abs(q_amp)+0.1),abs(q_amp)+0.1)
+    axs[0].step(t, i_sig, 'r')
+    axs[1].step(t, q_sig, 'b')
+
+    '''
+    TODO: 
+    1. Need to decide how to set the min res of y axes (set_ylim) based on backend amp resolution
+    Also need to do yset_ticks so plot is not jumping around when changing amplitude
+    2. To update quadrature max amplitude, need info about the in-phase signal. Can't seem to be able
+    to get this info by using .interactive_output() and constructing the signals inside the passed function.
+    Therefore, might need to have the signal construction function outside, and pass numpy arrays thru 
+    interactive_output() as fixed widgets (might be better this way).
+    '''
 
 # Function that returns maximum allowable quadrature amplitude
 def find_qamp_max(i_sign, q_sign):
@@ -80,296 +106,287 @@ def find_qamp_max(i_sign, q_sign):
     
     return qamp_max
 
-# Waveform plotting function
-def plot_wf(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width):
-    
-    t, i_sig, q_sig = sig_gen(wf_in, i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width)
-    
-    fig, axs = plt.subplots(2, sharex=True)
-    axs[1].set_xlabel('time t/dt')
-    axs[0].set_ylabel('In-Phase Amplitude')
-    axs[1].set_ylabel('Quadrature Amplitude')
-    axs[0].set_xlim(0,samples)
-    axs[0].set_ylim(-(abs(i_amp)+0.1),abs(i_amp)+0.1)
-    axs[1].set_ylim(-(abs(q_amp)+0.1),abs(q_amp)+0.1)
-    axs[0].step(t, i_sig, 'r')
-    axs[1].step(t, q_sig, 'b')
 
-    '''
-    TODO: 
-    1. Need to decide how to set the min res of y axes (set_ylim) based on backend amp resolution
-    Also need to do yset_ticks so plot is not jumping around when changing amplitude
-    2. To update quadrature max amplitude, need info about the in-phase signal. Can't seem to be able
-    to get this info by using .interactive_output() and constructing the signals inside the passed function.
-    Therefore, might need to have the signal construction function outside, and pass numpy arrays thru 
-    interactive_output() as fixed widgets (might be better this way). 
-    '''
-
-# Parameters
-backend_lst = ['Armonk', 'Almaden']                              # Backends that support Pulse
-input_lst = ['Import from Native', 'Import from Array', 
-             'Custom Waveform']                                  # Waveform input options
-waveform_lst = ['Rect', 'Sine', 'Cosine', 'Gaussian', 
-                'Gaussian Derivative','Gaussian Square','DRAG']  # Custom waveforms available
-
-'''TO DO: Find out what samples and amplitude resolution is for each backend'''
-amp_res_val = 0.01 # Amplitude resolution
-samples_val = 640  # Number of initial samples
-
-i_sig_arr = np.zeros(samples_val)                  # Array with in-phase signal amplitudes
-q_sig_arr = np.zeros(samples_val)                  # Array with quadrature signal amplitudes
-
-
-### UI Left Panel (I/O) ###
-
-# Dropdown menu for backend
-backend_dd = widgets.Dropdown(options=backend_lst, 
-                              layout=widgets.Layout(width='auto'),
-                              continuous_update=False,
-                              disabled=False)
-
-# Dropdown menu for waveform input
-wf_in_dd = widgets.Dropdown(options=input_lst, 
-                            layout=widgets.Layout(width='auto'),
-                            continuous_update=False,
-                            disabled=False)
-
-# Dropdown menu for type of in-phase wavefunction (enabled when custom waveform is selected)
-i_wf_dd = widgets.Dropdown(options=waveform_lst, 
-                          layout=widgets.Layout(width='auto'),
-                          description='In-Phase:',
-                          continuous_update=False,
-                          disabled=True)
-
-# Dropdown menu for type of quadrature wavefunction (enabled when custom waveform is selected)
-q_wf_dd = widgets.Dropdown(options=waveform_lst,
-                          layout=widgets.Layout(width='auto'),
-                          description='Quadrature:',
-                          continuous_update=False,
-                          disabled=True)
-
-# Button to save pulse to array
-save_btn = widgets.Button(description='Save',
-                          icon='check',
-                          button_style='', # 'success', 'info', 'warning', 'danger' or ''
-                          disabled=False)
-
-
-# Combines all dropdown menus in a left panel
-left_panel = widgets.VBox([widgets.Label("Backend:"), backend_dd,
-                           widgets.Label("Input:"), wf_in_dd,
-                           widgets.Label("Waveform:"), i_wf_dd, q_wf_dd,
-                           widgets.Label("Output:"), 
-                           widgets.HBox([widgets.Label("Save to \'my_pulse\" "),save_btn])])
-
-
-### UI Top Pannel Waveform Control (enabled when custom waveform is selected) ###
-
-# Slider to select number of samples
-'''TO DO: Need to check what the valid resolution is for pulse amplitudes for each backend, 
-dont think there is a restriction though.'''
-samples_sldr = widgets.IntSlider(value=samples_val, 
-                                 description='Samples:', 
-                                 min=10, max=2*samples_val, step=2,
-                                 continuous_update=False,
-                                 disabled=True)
-
-# Slider for In-phase frequency,width,sigma (Get's updated depending on type of signal)
-i_width_sldr = widgets.IntSlider(value=np.floor(samples_val/2), 
-                                 description='I Width', 
-                                 min=1, max=100, step=1,
-                                 continuous_update=False,
-                                 disabled=True)
-
-# Slider for quadrature frequency,width,sigma (Get's updated depending on type of signal)
-q_width_sldr = widgets.IntSlider(value=np.floor(samples_val/2), 
-                                 description='Q Width', 
-                                 min=1, max=100, step=1,
-                                 continuous_update=False,
-                                 disabled=True)
-
-
-'''TO DO: maybe create dictionary containing different width options for ease of selection
-Need to decide if I need a "delay/centering" option.'''
-
-# Slider for in-phase amplitude (from -1 to 1)
-i_amp_sldr = widgets.FloatSlider(value=1, 
-                                 description='I Amplitude', 
-                                 min=-1, max=1, step=amp_res_val,
-                                 continuous_update=False,
-                                 disabled=True)
-
-# Slider for quadrature amplitude (Starts from -1 to 1, but gets updated based on value of in-phase amp)
-# This is because Pulse only accepts steps with max amplitude of R(I,Q) = 1
-q_amp_sldr = widgets.FloatSlider(value=0, 
-                                 description='Q Amplitude', 
-                                 min=-1, max=1, step=amp_res_val,
-                                 continuous_update=False,
-                                 disabled=True)
-
-
-# Combines time-related sliders in a box
-time_panel = widgets.HBox([i_width_sldr,q_width_sldr])
-
-# Combines amplitude sliders in a box
-amp_panel = widgets.HBox([i_amp_sldr,q_amp_sldr])
-
-
-
-# Top panel with all waveform control sliders
-top_panel = widgets.VBox([samples_sldr,time_panel,amp_panel])
-
-### Fixed parameters ###
-
-# fixed widget elements to manipulate in-phase and quadrature amplitude arrays
-i_sig_fxd = widgets.fixed(value=i_sig_arr)
-q_sig_fxd = widgets.fixed(value=q_sig_arr)
-
-# Maximum amplitude for quadrature signal. Needs to be interactive bc depends on in-phase amplitude
-q_amp_max_fxd = widgets.fixed(value=0.0)
-
-### UI interactions ###
-
-# Enable waveform editing when 'Custom Waveform' is selected as input
-def update_wf_dd_disabled(*args):
-    if wf_in_dd.value == 'Custom Waveform':
-        i_wf_dd.disabled = False
-        q_wf_dd.disabled = False
-        samples_sldr.disabled = False
-        i_amp_sldr.disabled = False
-        q_amp_sldr.disabled = False
-        i_width_sldr.disabled = False
-        q_width_sldr.disabled = False
-    else:
-        i_wf_dd.disabled = True
-        q_wf_dd.disabled = True
-        samples_sldr.disabled = True
-        i_amp_sldr.disabled = True
-        q_amp_sldr.disabled = True
-        i_width_sldr.disabled = True
-        q_width_sldr.disabled = True
-        
-wf_in_dd.observe(update_wf_dd_disabled, 'value')
-
-# Change number of min/max samples based on backend selected
-'''TO DO: Right now, min/max/value samples below were manually plugged in, 
-but need to get them from actual backends.'''
-def update_samples(*args):
-    if backend_dd.value == 'Almaden':
-        samples_sldr.min = 10
-        samples_sldr.value = 160
-        samples_sldr.max = 320
-    if backend_dd.value == 'Armonk':
-        samples_sldr.min = 10
-        samples_sldr.value = 640
-        samples_sldr.max = 1280        
-
-backend_dd.observe(update_samples, 'value')
-
-
-# Updates max allowable value of Quadrature amplitude
-def update_qamp_max(*args):
-    if wf_in_dd.value == 'Custom Waveform':
-
-        # Here to calculate q_sig I am passing an arbitrary amplitude (10*amp_res_val) because q_sig is only needed
-        # to find the indices of the maxima of the currently-selected function. If I pass the current
-        # q_amp (q_amp_sldr.value), there is a change it will be zero and no correct maxima are found
-        t, i_sig, q_sig = sig_gen(wf_in_dd.value, i_wf_dd.value, q_wf_dd.value, 
-                                  samples_sldr.value, i_amp_sldr.value, 10*amp_res_val,
-                                  i_width_sldr.value, q_width_sldr.value)
-
-        q_amp_max = find_qamp_max(i_sig,q_sig)
-
-        if q_amp_max < amp_res_val:
-            q_amp_sldr.value = 0
-            q_amp_sldr.disabled = True
-        else:
-            q_amp_sldr.max = q_amp_max
-            q_amp_sldr.min = -q_amp_max
-            q_amp_sldr.disabled = False
-
-
-wf_in_dd.observe(update_qamp_max, 'value')
-i_wf_dd.observe(update_qamp_max, 'value')
-q_wf_dd.observe(update_qamp_max, 'value')
-samples_sldr.observe(update_qamp_max, 'value')
-i_amp_sldr.observe(update_qamp_max, 'value')
-q_amp_sldr.observe(update_qamp_max, 'value')
-
-
-# Updates in-phase width/sigma/frequency slider
-def update_i_width_sldr(*args):
-    if i_wf_dd.value == 'Sine' or i_wf_dd.value == 'Cosine':
-        i_width_sldr.description='I Periods'
-        i_width_sldr.value = 1
-        i_width_sldr.min = 1
-        i_width_sldr.max = 10
-    elif i_wf_dd.value == 'Rect':
-        i_width_sldr.description='I Width'
-        i_width_sldr.value = np.floor(samples_sldr.value/2)
-        i_width_sldr.min = 1
-        i_width_sldr.max = samples_sldr.value
-    else:
-        i_width_sldr.description='I Sigma'
-        i_width_sldr.value = np.floor(samples_sldr.value/10)
-        i_width_sldr.min = 1
-        i_width_sldr.max = samples_sldr.value
-        
-i_wf_dd.observe(update_i_width_sldr, 'value')
-samples_sldr.observe(update_i_width_sldr, 'value')
-
-# Updates quadrature width/sigma/frequency slider
-def update_q_width_sldr(*args):
-    if q_wf_dd.value == 'Sine' or q_wf_dd.value == 'Cosine':
-        q_width_sldr.description='Q Periods'
-        q_width_sldr.value = 1
-        q_width_sldr.min = 1
-        q_width_sldr.max = 10
-    elif q_wf_dd.value == 'Rect':
-        q_width_sldr.description='Q Width'
-        q_width_sldr.value = np.floor(samples_sldr.value/2)
-        q_width_sldr.min = 1
-        q_width_sldr.max = samples_sldr.value
-    else:
-        q_width_sldr.description='Q Sigma'
-        q_width_sldr.value = np.floor(samples_sldr.value/10)
-        q_width_sldr.min = 1
-        q_width_sldr.max = samples_sldr.value
-
-
-q_wf_dd.observe(update_q_width_sldr, 'value')
-samples_sldr.observe(update_q_width_sldr, 'value')
-
-
-def on_button_clicked(b):
-    if wf_in_dd.value == 'Custom Waveform':
-        t, i_sig, q_sig = sig_gen(wf_in_dd.value, i_wf_dd.value, q_wf_dd.value, 
-                                  samples_sldr.value, i_amp_sldr.value, q_amp_sldr.value,
-                                  i_width_sldr.value, q_width_sldr.value)
-        
-        b.my_pulse = i_sig + 1j*q_sig
-
-save_btn.on_click(on_button_clicked)
-
-# Interactive figure
-fig_out = widgets.interactive_output(plot_wf, 
-                                     {'wf_in':wf_in_dd, 
-                                      'i_wf':i_wf_dd, 
-                                      'q_wf':q_wf_dd,
-                                      'samples':samples_sldr,
-                                      'i_amp':i_amp_sldr,
-                                      'q_amp':q_amp_sldr,
-                                      'i_width':i_width_sldr,
-                                      'q_width':q_width_sldr})
-fig_out.layout.height = '350px'
-
-# Combines top sliders and figure in right panel
-right_panel = widgets.VBox([top_panel,fig_out])
-
-
+global my_pulse
 
 class PulseEditor(widgets.VBox):
 
+    def setup_config(self):
+        # Parameters
+        self.backend_lst = ['Armonk', 'Almaden']                              # Backends that support Pulse
+        self.input_lst = ['Custom Waveform', 'Import from Native', 'Import from Array']                                  # Waveform input options
+        self.waveform_lst = ['Rect', 'Sine', 'Cosine', 'Gaussian', 
+                        'Gaussian Derivative','Gaussian Square','DRAG']  # Custom waveforms available
+
+        '''TO DO: Find out what samples and amplitude resolution is for each backend'''
+        self.amp_res_val = 0.01 # Amplitude resolution
+        self.samples_val = 640  # Number of initial samples
+
+        self.i_sig_arr = np.zeros(self.samples_val) # Array with in-phase signal amplitudes
+        self.q_sig_arr = np.zeros(self.samples_val) # Array with quadrature signal amplitudes
+
+        ### Fixed parameters ###
+
+        # fixed widget elements to manipulate in-phase and quadrature amplitude arrays
+        self.i_sig_fxd = widgets.fixed(value=self.i_sig_arr)
+        self.q_sig_fxd = widgets.fixed(value=self.q_sig_arr)
+
+        # Maximum amplitude for quadrature signal. Needs to be interactive bc depends on in-phase amplitude
+        self.q_amp_max_fxd = widgets.fixed(value=0.0)
+
+    def setup_backends(self):
+        self.backends = \
+            widgets.Dropdown(
+                options=self.backend_lst, 
+                layout=widgets.Layout(width='auto', visibility='hidden'),
+                description='Backend: ',
+            )
+    def setup_array_import(self):
+        self.array_import = \
+            widgets.Dropdown(
+                options=[1,2,3],
+                description='Placeholder',
+                disabled=True
+            )
+
+    def setup_custom_waveform_input(self):
+        self.i_wf_dd = widgets.Dropdown(
+            options=self.waveform_lst, 
+            layout=widgets.Layout(width='auto'),
+            description='In-Phase:',
+        )
+
+        # Dropdown menu for type of quadrature wavefunction (enabled when custom waveform is selected)
+        self.q_wf_dd = widgets.Dropdown(
+            options=self.waveform_lst,
+            layout=widgets.Layout(width='auto'),
+            description='Quadrature:',
+        )
+
+        # Slider for in-phase amplitude (from -1 to 1)
+        self.samples_sldr = widgets.IntSlider(
+            value=self.samples_val, 
+            description='Samples:', 
+            min=10, max=2*self.samples_val, step=2,
+            continuous_update=False
+            
+        )
+
+        self.samples_hbox = widgets.HBox([self.samples_sldr], layout=widgets.Layout(display='flex', flex_flow='column', align_items='center'))
+
+        # Slider for In-phase frequency,width,sigma (Gets updated depending on type of signal)
+        self.i_width_sldr = widgets.IntSlider(
+            value=np.floor(self.samples_val/2), 
+            description='I Width', 
+            min=1, max=100, step=1,
+            continuous_update=False
+        )
+
+        # Slider for quadrature frequency,width,sigma (Gets updated depending on type of signal)
+        self.q_width_sldr = widgets.IntSlider(
+            value=np.floor(self.samples_val/2), 
+            description='Q Width', 
+            min=1, max=100, step=1,
+            continuous_update=False
+        )
+
+        width_hbox = widgets.HBox([self.i_width_sldr, self.q_width_sldr])
+
+        # Slider for in-phase amplitude (from -1 to 1)
+        self.i_amp_sldr = widgets.FloatSlider(
+            value=1, 
+            description='I Amplitude', 
+            min=-1, max=1, step=self.amp_res_val,
+            continuous_update=False,
+        )
+
+        # Slider for quadrature amplitude (Starts from -1 to 1, but gets updated based on value of in-phase amp)
+        # This is because Pulse only accepts steps with max amplitude of R(I,Q) = 1
+        self.q_amp_sldr = widgets.FloatSlider(
+            value=0, 
+            description='Q Amplitude', 
+            min=-1, max=1, step=self.amp_res_val,
+            continuous_update=False,
+        )
+
+        amp_hbox = widgets.HBox([self.i_amp_sldr, self.q_amp_sldr])
+
+        self.custom_wf_hbox = widgets.HBox([
+            widgets.VBox([
+                widgets.Label("Waveform: "), self.i_wf_dd, self.q_wf_dd
+            ], layout=widgets.Layout(width='30%')),
+            widgets.VBox([
+                self.samples_hbox,
+                width_hbox,
+                amp_hbox
+            ], layout=widgets.Layout(width='70%'))
+        ])
+
+        self.custom_wf_controls = [self.i_wf_dd, self.q_wf_dd, self.samples_sldr, self.i_width_sldr, self.q_width_sldr, self.i_amp_sldr, self.q_amp_sldr]
+
+    def setup_wf_input(self):
+        
+        # Dropdown menu for waveform input
+        self.wf_input = \
+            widgets.Dropdown(
+                options=self.input_lst, 
+                layout=widgets.Layout(width='auto'),
+                description='Input: '
+            )
+
+        def on_value_change(change):
+            new_val = change['new']
+
+            if new_val == 'Import from Native':
+                self.backends.layout.visibility='visible'
+                for control in self.custom_wf_controls:
+                    control.disabled=True
+            elif new_val == 'Import from Array':
+                return
+            else:
+                self.backends.layout.visibility='hidden'
+                for control in self.custom_wf_controls:
+                    control.disabled=False
+
+        self.wf_input.observe(on_value_change, 'value')
+
+    def setup_observers(self):
+
+        # Change number of min/max samples based on backend selected
+        '''TO DO: Right now, min/max/value samples below were manually plugged in, 
+        but need to get them from actual backends.'''
+        def update_samples(backend_change):
+            new_backend = backend_change['new']
+            if new_backend == 'Almaden':
+                (self.samples_sldr.min, self.samples_sldr.value, self.samples_sldr.max) = (10, 160, 320)
+            if new_backend == 'Armonk':
+                (self.samples_sldr.min, self.samples_sldr.value, self.samples_sldr.max) = (10, 640, 1280)        
+
+        self.backends.observe(update_samples, 'value')
+
+        # Updates max allowable value of Quadrature amplitude
+        def update_qamp_max(*args):
+            if self.wf_input.value == 'Custom Waveform':
+
+                # Here to calculate q_sig I am passing an arbitrary amplitude (10*amp_res_val) because q_sig is only needed
+                # to find the indices of the maxima of the currently-selected function. If I pass the current
+                # q_amp (q_amp_sldr.value), there is a change it will be zero and no correct maxima are found
+                t, i_sig, q_sig = _sig_gen(self.wf_input.value, self.i_wf_dd.value, self.q_wf_dd.value, 
+                                        self.samples_sldr.value, self.i_amp_sldr.value, 10*self.amp_res_val,
+                                        self.i_width_sldr.value, self.q_width_sldr.value)
+
+                q_amp_max = find_qamp_max(i_sig,q_sig)
+
+                if q_amp_max < self.amp_res_val:
+                    self.q_amp_sldr.value = 0
+                    self.q_amp_sldr.disabled = True
+                else:
+                    self.q_amp_sldr.max = q_amp_max
+                    self.q_amp_sldr.min = -q_amp_max
+                    self.q_amp_sldr.disabled = False
+
+        self.wf_input.observe(update_qamp_max, 'value')
+        self.i_wf_dd.observe(update_qamp_max, 'value')
+        self.q_wf_dd.observe(update_qamp_max, 'value')
+        self.samples_sldr.observe(update_qamp_max, 'value')
+        self.i_amp_sldr.observe(update_qamp_max, 'value')
+        self.q_amp_sldr.observe(update_qamp_max, 'value')
+
+        def update_i_width_sldr(*args):
+            if self.i_wf_dd.value == 'Sine' or self.i_wf_dd.value == 'Cosine':
+                self.i_width_sldr.description='I Periods'
+                self.i_width_sldr.value = 1
+                self.i_width_sldr.min = 1
+                self.i_width_sldr.max = 10
+            elif self.i_wf_dd.value == 'Rect':
+                self.i_width_sldr.description='I Width'
+                self.i_width_sldr.value = np.floor(self.samples_sldr.value/2)
+                self.i_width_sldr.min = 1
+                self.i_width_sldr.max = self.samples_sldr.value
+            else:
+                self.i_width_sldr.description='I Sigma'
+                self.i_width_sldr.value = np.floor(self.samples_sldr.value/10)
+                self.i_width_sldr.min = 1
+                self.i_width_sldr.max = self.samples_sldr.value
+                
+        self.i_wf_dd.observe(update_i_width_sldr, 'value')
+        self.samples_sldr.observe(update_i_width_sldr, 'value')
+
+        # Updates quadrature width/sigma/frequency slider
+        def update_q_width_sldr(*args):
+            if self.q_wf_dd.value == 'Sine' or self.q_wf_dd.value == 'Cosine':
+                self.q_width_sldr.description='Q Periods'
+                self.q_width_sldr.value = 1
+                self.q_width_sldr.min = 1
+                self.q_width_sldr.max = 10
+            elif self.q_wf_dd.value == 'Rect':
+                self.q_width_sldr.description='Q Width'
+                self.q_width_sldr.value = np.floor(self.samples_sldr.value/2)
+                self.q_width_sldr.min = 1
+                self.q_width_sldr.max = self.samples_sldr.value
+            else:
+                self.q_width_sldr.description='Q Sigma'
+                self.q_width_sldr.value = np.floor(self.samples_sldr.value/10)
+                self.q_width_sldr.min = 1
+                self.q_width_sldr.max = self.samples_sldr.value
+
+
+        self.q_wf_dd.observe(update_q_width_sldr, 'value')
+        self.samples_sldr.observe(update_q_width_sldr, 'value')
+
+    def plot_figure(self):
+        self.fig_out = widgets.interactive_output(
+            _plot_wf, 
+            {'wf_in':self.wf_input, 
+            'i_wf':self.i_wf_dd, 
+            'q_wf':self.q_wf_dd,
+            'samples':self.samples_sldr,
+            'i_amp':self.i_amp_sldr,
+            'q_amp':self.q_amp_sldr,
+            'i_width':self.i_width_sldr,
+            'q_width':self.q_width_sldr
+            }
+        )
+
     def __init__(self):
-        super().__init__([widgets.HBox([left_panel, right_panel])])
+
+        self.setup_config()
+        self.setup_backends()
+        self.setup_array_import()
+        self.setup_custom_waveform_input()
+        self.setup_wf_input()
+        self.setup_observers()
+        self.plot_figure()
+
+        """ lyt = widgets.Layout(display='flex',
+                flex_flow='column',
+                align_items='center') """
+        # Button to save pulse to array
+        self.save_btn = widgets.Button(
+            description='Save to my_pulse',
+            icon='check',
+            button_style='info',
+            disabled=False,
+            layout=widgets.Layout(width='auto')
+        )
+        def on_button_clicked(b):
+            if self.wf_input.value == 'Custom Waveform':
+                t, i_sig, q_sig = _sig_gen(self.wf_input.value, self.i_wf_dd.value, self.q_wf_dd.value, 
+                                        self.samples_sldr.value, self.i_amp_sldr.value, self.q_amp_sldr.value,
+                                        self.i_width_sldr.value, self.q_width_sldr.value)
+                
+                my_pulse = i_sig + 1j*q_sig
+
+        self.save_btn.on_click(on_button_clicked)
+
+        super().__init__([
+            widgets.HBox([
+                self.wf_input,
+                self.backends,
+                self.save_btn
+            ],
+            layout=widgets.Layout(display='flex', justify_content='flex-start')),
+            self.custom_wf_hbox,
+            self.fig_out
+        ])
 
