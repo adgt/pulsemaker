@@ -1,2 +1,3 @@
-# __all__ = ['ScheduleEditor', '...']
+# __all__ = ['ScheduleEditor', 'PulseDesigner', '...']
 from .ScheduleEditor import *
+from .PulseDesigner import *
