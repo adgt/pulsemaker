@@ -24,9 +24,9 @@ For a development installation (requires npm),
 
 ### Tutorials
 
-For a tutorial on how to use the `PulseDesigner` take a look at [Tutorial_PulseDesigner.ipynb](https://nbviewer.jupyter.org/github/adgt/pulsemaker/blob/main/Tutorial_PulseDesigner.ipynb).
+For a tutorial on how to use the `PulseDesigner` take a look at [Tutorial_PulseDesigner.ipynb](https://nbviewer.jupyter.org/github/adgt/pulseMaker/blob/main/Tutorial_PulseDesigner.ipynb).
 
-For a tutorial on how to use the `ScheduleDesigner` take a look at [Tutorial_ScheduleDesigner.ipynb](https://nbviewer.jupyter.org/github/adgt/pulsemaker/blob/main/Tutorial_ScheduleDesigner.ipynb)
+For a tutorial on how to use the `ScheduleDesigner` take a look at [Tutorial_ScheduleDesigner.ipynb](https://nbviewer.jupyter.org/github/adgt/pulseMaker/blob/main/Tutorial_ScheduleDesigner.ipynb)
 
 Otherwise, you can simply run:
 ```
