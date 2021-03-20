@@ -3,3 +3,5 @@ pulsemaker.egg-info/
 .DS_Store
 __pycache__/
 .vscode/
+build/
+dist/
