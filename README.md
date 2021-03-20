@@ -15,7 +15,7 @@ To see a workflow that combines both the `PulseDesigner` and the `ScheduleDesign
 ## Getting Started
 ### Installation
 
-Installation currently requires a development installation (PyPI packages coming soon). Tested with JupyterLab 2, so may not work in JupyterLab 3 just yet.
+Tested with JupyterLab 2, so may not work in JupyterLab 3 just yet.
 
 To install use pip:
 
