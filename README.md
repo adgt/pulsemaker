@@ -15,13 +15,11 @@ To see a workflow that combines both the `PulseDesigner` and the `ScheduleDesign
 ## Getting Started
 ### Installation
 
-Tested with JupyterLab 2, so may not work in JupyterLab 3 just yet.
-
-To install use pip:
+To install use pip (JupyterLab 3 recommended):
 
     $ pip install pulsemaker
 
-For a development installation (requires [Node.js](https://nodejs.org) and [Yarn version 1](https://classic.yarnpkg.com/)),
+For a development installation,
 
     $ git clone https://github.com/adgt/pulsemaker.git
     $ cd pulsemaker
