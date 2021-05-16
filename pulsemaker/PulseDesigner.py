@@ -120,7 +120,10 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
 
         '''TO DO: Find out what samples and amplitude resolution is for each backend'''
         self.amp_res_val = 0.01 # Amplitude resolution
-        self.samples_val = 640  # Number of initial samples
+#         self.samples_val = 1000  # Number of initial samples
+        self.amp_val = 0.05
+        self.samples_val = 2704
+        self.sigma_val = 336
 
         self.drag_links = []
 
@@ -147,15 +150,15 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
         )
 
         self.i_sigma_sldr = widgets.IntSlider(
-            value=self.samples_val//2, 
+            value=self.sigma_val, 
             description='Sigma', 
-            min=1, max=100, step=1,
+            min=1, max=max(100,self.sigma_val), step=1,
             continuous_update=False
         )
 
         # Slider for in-phase amplitude (from -1 to 1)
         self.i_amp_sldr = widgets.FloatSlider(
-            value=0, 
+            value=self.amp_val, 
             description='Amplitude', 
             min=-1, max=1, step=self.amp_res_val,
             continuous_update=False,
@@ -197,9 +200,9 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
         )
 
         self.q_sigma_sldr = widgets.IntSlider(
-            value=np.floor(self.samples_val/2), 
+            value=np.floor(self.sigma_val/2), 
             description='Sigma', 
-            min=1, max=100, step=1,
+            min=1, max=max(100,self.sigma_val), step=1,
             continuous_update=False
         )
 
@@ -237,11 +240,11 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
         self.samples_sldr = widgets.IntSlider(
             value=self.samples_val, 
             description='Samples:', 
-            min=10, max=2*self.samples_val, step=2,
-            continuous_update=False
-            
+            min=16, max=5120, 
+            step=16,
+            continuous_update=False            
         )
-
+        
         #-------------------------------------------------------------------------------------------------------------------------------
 
         flex_layout = widgets.Layout(display='flex', flex_flow='row')
@@ -343,6 +346,7 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
         self.q_amp_sldr.observe(update_qamp_max, 'value')
 
         def on_samples_changed(*args):
+            self.samples_val = self.samples_sldr.value
             if self.i_wf_dd.value == 'Gaussian Square':
                 self.i_width_sldr.min = 0
                 self.i_width_sldr.max = self.samples_sldr.value
@@ -370,7 +374,6 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
                     self.q_sigma_sldr.value = self.q_sigma_sldr.max
                 
         self.samples_sldr.observe(on_samples_changed, 'value')
-
         
         self.i_wf_dd.observe(self.update_pulse, 'value')
         self.q_wf_dd.observe(self.update_pulse, 'value')
@@ -419,3 +422,5 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
             self.designer,
             self.fig_out,
         ])
+        
+        self.update_pulse(None)
