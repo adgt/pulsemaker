@@ -415,7 +415,11 @@ class ScheduleDesigner(widgets.VBox):
                                                 # both elements in the list take the same value ['qx','qx'] (qx is currently selecte qubit)
                                                 # If two-qubit gate (CX) is selected: ['qx','qy'] where CX is applied from qx to qy.
 
-        self.schedule = Schedule()                 # Final schedule (currently will use Qiskit's data structuring) 
+        self.schedule = Schedule()  # Final schedule (currently will use Qiskit's data structuring) 
+        
+        self.edit_item = None       # Editing mode of an existing instruction
+        phase_multiplier = 2*np.pi
+        freq_multiplier = 1e9
 
         def get_collated_schedule():
             '''combined list of pulse schedule in format (w/o payload): (time, channel, type)'''
@@ -469,7 +473,11 @@ class ScheduleDesigner(widgets.VBox):
         shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.75, min=4.0, max=5.5, step=0.001,
                                                           layout=widgets.Layout(width='160px'),
                                                           disabled=False)
-        
+
+        apply_btn = widgets.Button(description='Apply',
+                                              layout=widgets.Layout(width='80px'),
+                                              disabled=False)
+
         # Dropdown menu for channel selection to append to schedule
         append_to_dd = widgets.Dropdown(options=self._backend_chan_lst, 
                                              layout=widgets.Layout(width='160px'),
@@ -497,10 +505,16 @@ class ScheduleDesigner(widgets.VBox):
                 append_input_panel.children = [nativegate_input_dd]
                 append_to_dd.options = self._backend_qubit_lst
             elif append_type == self.AppendType.PHASE:
-                append_input_panel.children = [shiftphase_input_fltxt]
+                if self.edit_item and self.edit_item[0] == InstructionType.PHASE:
+                    append_input_panel.children = [shiftphase_input_fltxt, apply_btn]
+                else:
+                    append_input_panel.children = [shiftphase_input_fltxt]
                 append_to_dd.options = self._backend_chan_lst
             elif append_type == self.AppendType.FREQ:
-                append_input_panel.children = [shiftfreq_input_fltxt]
+                if self.edit_item and self.edit_item[0] == InstructionType.FREQ:
+                    append_input_panel.children = [shiftfreq_input_fltxt, apply_btn]
+                else:                    
+                    append_input_panel.children = [shiftfreq_input_fltxt]
                 append_to_dd.options = self._backend_chan_lst            
             elif append_type == self.AppendType.PULSE:
                 append_input_panel.children = []
@@ -516,7 +530,7 @@ class ScheduleDesigner(widgets.VBox):
 #             layout=widgets.Layout(width='max-content', display='flex', flex='1 0 auto'), # If the items' names are long
         )
         append_type_select.style.button_width = "100px"
-        append_type_select.observe(toggle_append_type, names='value');
+        append_type_select.observe(toggle_append_type, names='value')    
         toggle_append_type({'new': append_type_select.value, 'owner': append_type_select}) # call it once to initialize
                 
         append_panel = widgets.VBox([append_type_select,
@@ -584,8 +598,8 @@ class ScheduleDesigner(widgets.VBox):
                         self.instructions[chan] += [InstructionType.PAD, max_sample_count - channel_max_sample_count]
 
             current_chan = append_to_dd.value
-            current_phase = 2*np.pi*shiftphase_input_fltxt.value
-            current_freq = 1e9*shiftfreq_input_fltxt.value
+            current_phase = phase_multiplier * shiftphase_input_fltxt.value
+            current_freq = freq_multiplier * shiftfreq_input_fltxt.value
             
             append_type = append_type_select.options.index(append_type_select.value)
                         
@@ -683,21 +697,41 @@ class ScheduleDesigner(widgets.VBox):
 
         nativegate_input_dd.observe(update_dd_qubits, 'value')
 
-        def get_index_for_item(instructions, time, item_type):
-            index = -1
-            sample_count = 0
-            for type, data in instructions:
-                index += 1
+        def select_schedule_item(button):
+            schedule = get_collated_schedule()
+            index = self._schedule_list.index
+            (item_index, time, channel, type) = schedule[index]
 
-                if item_type == type and time == sample_count:
-                    return index
+            if not (type == InstructionType.PHASE or type == InstructionType.FREQ):
+                self.edit_item = None
+                schedule_item_edit_btn.disabled = True
+            else:
+                schedule_item_edit_btn.disabled = False
 
-                if type == InstructionType.PULSE:
-                    sample_count += len(data)
-                elif type == InstructionType.PAD:
-                    sample_count += data
+        def edit_schedule_item(button):
+            schedule = get_collated_schedule()
+            index = self._schedule_list.index
+            (item_index, time, channel, type) = schedule[index]
 
-        def del_schedule_item(*args):
+            instructions = self.instructions[channel]            
+            edit_item = instructions[item_index]
+            if self.edit_item == edit_item:
+                self.edit_item = None
+                append_type = append_type_select.value                    
+                append_type_select.value = 0 # set to something else to force a refresh
+                append_type_select.value = append_type                                        
+            else:
+                self.edit_item = edit_item
+                if type == InstructionType.PHASE:
+                    append_type_select.value = 0 # set to something else to force a refresh
+                    append_type_select.value = self.AppendType.PHASE
+                    shiftphase_input_fltxt.value = self.edit_item[1] / phase_multiplier
+                elif type == InstructionType.FREQ:
+                    append_type_select.value = 0 # set to something else to force a refresh
+                    append_type_select.value = self.AppendType.FREQ
+                    shiftfreq_input_fltxt.value = self.edit_item[1] / freq_multiplier
+
+        def delete_schedule_item(*args):
             schedule = get_collated_schedule()
             index = self._schedule_list.index
             (item_index, time, channel, type) = schedule[index]
@@ -720,7 +754,6 @@ class ScheduleDesigner(widgets.VBox):
             (item_index, time, channel, type) = schedule[index]
 
             instructions = self.instructions[channel]
-            print(item_index)
             if up and item_index - 1 >= 0:
                 previous = instructions[item_index - 1]
                 instructions[item_index - 1] = instructions[item_index]
@@ -740,19 +773,24 @@ class ScheduleDesigner(widgets.VBox):
             description='',
             disabled=False,
             layout=widgets.Layout(width='100px', align_items='stretch')
-        )
+        )        
+        self._schedule_list.observe(select_schedule_item, names='value')
+        schedule_item_edit_btn = widgets.Button(description='📝', tooltip='Edit', layout=widgets.Layout(width='40px'))
         schedule_item_up_btn = widgets.Button(description='🔼', tooltip='Up', layout=widgets.Layout(width='40px'))
         schedule_item_down_btn = widgets.Button(description='🔽', tooltip='Down', layout=widgets.Layout(width='40px'))
         schedule_item_del_btn = widgets.Button(description='❌', layout=widgets.Layout(width='40px'))
+        schedule_item_edit_btn.on_click(edit_schedule_item)
         schedule_item_up_btn.on_click(move_schedule_item)
         schedule_item_down_btn.on_click(move_schedule_item)
-        schedule_item_del_btn.on_click(del_schedule_item)
+        schedule_item_del_btn.on_click(delete_schedule_item)
         
         # Plot schedule when outputs change
         self._plot = plot_pulse_schedule(self.instructions)
-        self._plot_panel = widgets.HBox([self._plot, self._schedule_list, widgets.VBox([schedule_item_up_btn, 
-                                                                                        schedule_item_down_btn, 
-                                                                                        schedule_item_del_btn])]) # allow for extending
+        self._plot_panel = widgets.HBox([self._plot, self._schedule_list, 
+                                widgets.VBox([schedule_item_edit_btn,
+                                              schedule_item_up_btn, 
+                                              schedule_item_down_btn, 
+                                              schedule_item_del_btn])]) # allow for extending
 
         schedule_editor = widgets.VBox([input_panel, 
                                         widgets.HBox([widgets.Label("Schedule:"), clear_btn, widgets.HBox(layout=widgets.Layout(flex='1 0 auto')),
