@@ -67,7 +67,7 @@ def _plot_wf(i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width, i_cycles, q_cy
     t, i_sig, q_sig = _sig_gen(i_wf, q_wf, samples, i_amp, q_amp, i_width, q_width, i_cycles, q_cycles, i_sigma, q_sigma, beta)
     
     _, axs = plt.subplots(2, sharex=True, figsize=(7,5), tight_layout=True)
-    axs[1].set_xlabel('time t/dt')
+    axs[1].set_xlabel('Samples (t/dt)')
     axs[0].set_ylabel('In-Phase Amplitude')
     axs[1].set_ylabel('Quadrature Amplitude')
     axs[0].set_xlim(0, samples)

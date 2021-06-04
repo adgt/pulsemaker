@@ -243,8 +243,8 @@ def pulsemaker_to_qiskit(instructions):
                 sample_count = len(payload)
                 if sample_count == 1:
                     continue
-                schedule |= Play(Waveform(payload), channel).shift(sample_count)
-                sample_count += sample_count
+                schedule |= Play(Waveform(payload), channel).shift(current_sample_count)
+                current_sample_count += sample_count
             elif type == InstructionType.PHASE:
                 schedule |= ShiftPhase(payload, channel).shift(current_sample_count)
             elif type == InstructionType.FREQ:
@@ -264,7 +264,7 @@ def simulate(qiskit_schedule, backend_name):
 def run_with_measure(qiskit_schedule, backend_name, meas_level=1):
     try:
         from qiskit import providers, assemble
-        from qiskit.pulse import DriveChannel
+        from qiskit.pulse import DriveChannel, SetFrequency
         from qiskit.pulse.macros import measure
         from qiskit.result.result import Result
         
@@ -278,8 +278,22 @@ def run_with_measure(qiskit_schedule, backend_name, meas_level=1):
             for channel in qiskit_schedule.channels:
                 if isinstance(channel, DriveChannel):
                     measure_qubits.append(channel.index)
+            frequency = None
+            for start_time, instruction in qiskit_schedule.instructions:
+                if isinstance(instruction, SetFrequency):
+                    frequency = {instruction.channel: instruction.frequency}
+                    break
+
+            def strip_frequencies(instruction):
+                if isinstance(instruction[1], SetFrequency):
+                    return False                
+                return True
+
+            print(qiskit_schedule)
+            qiskit_schedule = qiskit_schedule.filter(strip_frequencies)
+            print(qiskit_schedule)
             qiskit_schedule += measure(measure_qubits, pulse_sim) << qiskit_schedule.duration
-            pulse_qobj = assemble(qiskit_schedule, backend=pulse_sim, meas_level=meas_level)
+            pulse_qobj = assemble(qiskit_schedule, backend=pulse_sim, meas_level=meas_level, schedule_los=frequency)
             job = pulse_sim.run(pulse_qobj)
             return job.result()
         else:
@@ -378,6 +392,7 @@ def plot_pulse_schedule(instructions):
     return widgets.interactive(_plot, instructions=widgets.fixed(instructions))
 
 from qiskit.pulse import Schedule
+from qiskit.result.result import Result
 class ScheduleDesigner(widgets.VBox):
     class AppendType(IntEnum):
         GATE = 0
@@ -399,6 +414,7 @@ class ScheduleDesigner(widgets.VBox):
                 return "From Circuit"
             
     schedule = traitlets.Instance(Schedule)
+    result = traitlets.Instance(Result)
     circuit_qasm = traitlets.Unicode()
         
     def __init__(self):
@@ -453,10 +469,17 @@ class ScheduleDesigner(widgets.VBox):
 
         # Dropdown menu for backend
         backend_input_dd = widgets.Dropdown(options=backend_input_lst, 
-                                            layout=widgets.Layout(width='auto'),
+                                            layout=widgets.Layout(width='100px'),
                                             continuous_update=False,
                                             disabled=False)
         
+        backend_autosim = widgets.Checkbox(value=False,
+                                           description='',
+                                           layout=widgets.Layout(width='100px', align_self='flex-start'),
+                                           disabled=False)
+        backend_autosim.style.description_width = "0"
+        self._backend_autosim = backend_autosim
+
         # Dropdown menu for native gate selection
         nativegate_input_dd = widgets.Dropdown(options=nativegate_input_lst[0:len(nativegate_input_lst)-1], 
                                                layout=widgets.Layout(width='160px'),
@@ -530,15 +553,20 @@ class ScheduleDesigner(widgets.VBox):
 #             layout=widgets.Layout(width='max-content', display='flex', flex='1 0 auto'), # If the items' names are long
         )
         append_type_select.style.button_width = "100px"
-        append_type_select.observe(toggle_append_type, names='value')    
+        append_type_select.observe(toggle_append_type, names='value')
+        # NOTE: Another option than the code below is to cycle the .value to trigger a call
         toggle_append_type({'new': append_type_select.value, 'owner': append_type_select}) # call it once to initialize
                 
         append_panel = widgets.VBox([append_type_select,
                                      append_input_panel])
                                            
         # Combines all dropdown menus in a left panel
-        input_panel = widgets.HBox([widgets.VBox([widgets.Label("Backend:"), backend_input_dd]), append_panel],
-                                                 layout=widgets.Layout(justify_content='space-between'))
+        input_panel = widgets.HBox([widgets.VBox([
+                                                widgets.HBox([widgets.Label("Backend:"), backend_input_dd]), 
+                                                widgets.HBox([widgets.Label("Auto-simulate:"), backend_autosim])],
+                                                layout=widgets.Layout(justify_content='flex-start')),
+                                            append_panel],
+                                            layout=widgets.Layout(justify_content='space-between'))
         
         ### Widget Interactions ###
         
@@ -549,6 +577,12 @@ class ScheduleDesigner(widgets.VBox):
                 self._schedule_list.options = [f"{channel}: {instruction}" for (index, time, channel, instruction) in schedule]
                 if index is not None and len(self._schedule_list.options) > 0:
                     self._schedule_list.index = min(len(self._schedule_list.options) - 1, index)
+
+            self.schedule = pulsemaker_to_qiskit(self.instructions)
+            
+            if self._backend_autosim.value == True:
+                self.result = run_with_measure(self.schedule, self._current_backend)
+
             self.update()
 
         # Clear schedule
@@ -700,6 +734,10 @@ class ScheduleDesigner(widgets.VBox):
         def select_schedule_item(button):
             schedule = get_collated_schedule()
             index = self._schedule_list.index
+            if index is None:
+                schedule_item_edit_btn.disabled = True
+                return
+
             (item_index, time, channel, type) = schedule[index]
 
             if not (type == InstructionType.PHASE or type == InstructionType.FREQ):
@@ -713,7 +751,7 @@ class ScheduleDesigner(widgets.VBox):
             index = self._schedule_list.index
             (item_index, time, channel, type) = schedule[index]
 
-            instructions = self.instructions[channel]            
+            instructions = self.instructions[channel]
             edit_item = instructions[item_index]
             if self.edit_item == edit_item:
                 self.edit_item = None
@@ -731,6 +769,29 @@ class ScheduleDesigner(widgets.VBox):
                     append_type_select.value = self.AppendType.FREQ
                     shiftfreq_input_fltxt.value = self.edit_item[1] / freq_multiplier
 
+        def update_edited_item(button):
+            edit_item = self.edit_item
+            if edit_item:
+                type = edit_item[0]
+                index = -1
+                instructions = None
+                for channel, data in self.instructions.items():
+                    item_index = data.index(edit_item)
+                    if item_index >= 0:
+                        index = item_index
+                        instructions = self.instructions[channel]
+                        break
+
+                if index >= 0:
+                    if type == InstructionType.PHASE:
+                        payload = (InstructionType.PHASE, phase_multiplier * shiftphase_input_fltxt.value)
+                    elif type == InstructionType.FREQ:                
+                        payload = (InstructionType.FREQ, freq_multiplier * shiftfreq_input_fltxt.value)
+
+                    instructions[index] = payload
+                    self.edit_item = payload
+            update_schedule()
+
         def delete_schedule_item(*args):
             schedule = get_collated_schedule()
             index = self._schedule_list.index
@@ -743,7 +804,6 @@ class ScheduleDesigner(widgets.VBox):
                 del self.instructions[channel]
 
             del schedule[index]
-
             update_schedule()
 
         def move_schedule_item(button):
@@ -768,6 +828,8 @@ class ScheduleDesigner(widgets.VBox):
             else:
                 self._schedule_list.index = min(index + 1, len(self._schedule_list.options) - 1)                
             update_schedule()
+
+        apply_btn.on_click(update_edited_item)
 
         self._schedule_list = widgets.Select(
             description='',
