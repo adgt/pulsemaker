@@ -1,10 +1,9 @@
 from enum import IntEnum
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
 import ipywidgets as widgets
 import traitlets as traitlets
-from IPython.display import display
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+import numpy as np
 
 def get_qiskit_backend(backend_name):
     try:
@@ -25,8 +24,9 @@ def get_qiskit_backend(backend_name):
         backend = FakeAlmaden()
     return backend
 
-# Function to generate qubit, channel and coupling map lists based on selected backend
 def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
+    '''Generate qubit, channel and coupling map lists based on selected backend'''
+
     backend = get_qiskit_backend(backend_name)
     
     '''
@@ -54,7 +54,7 @@ def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
             chan_lst.append('u'+str(qb_num))
 
     # generate gate list
-    gate_lst = ['X','Y','Z','H','ID','SX','RZ','CX']
+    gate_lst = ['X','Y','Z','H','SX','RZ','CX']
     if num_qbs == 1:
         gate_lst.pop()
 
@@ -74,9 +74,9 @@ def qiskit_backend_config(backend_name, backend_input_lst, backend_qnum_lst):
     return qubit_lst, chan_lst, cmap_lst, gate_lst
 
 
-# Function to build qiskit schedule based on selected gate and backend
 def qiskit_gate_to_sched(backend_name, gate_name, qubits, num_qbs):
-    
+    '''Build qiskit schedule based on selected gate and backend'''
+
     try:
         from qiskit import QuantumCircuit
         from qiskit import transpile, schedule as build_schedule
@@ -122,8 +122,9 @@ def qiskit_gate_to_sched(backend_name, gate_name, qubits, num_qbs):
     trans_circuit = transpile(circuit, backend)
     return build_schedule(trans_circuit, backend)
 
-# Function to build qiskit schedule based on selected gate and backend
 def qiskit_circuit_qasm_to_sched(backend_name, circuit_qasm):    
+    '''Build qiskit schedule based on selected gate and backend'''
+
     try:
         from qiskit import QuantumCircuit
         from qiskit.qasm import QasmError
@@ -142,74 +143,57 @@ def qiskit_circuit_qasm_to_sched(backend_name, circuit_qasm):
     except ImportError:
         pass    
 
-# Function to "pad" channels up to the max sample in all of them
-def pad_channels(pulses, chans_to_pad):
+class InstructionType(IntEnum):
+    # Keep these in sync with AppendType
+    PAD = 0
+    PHASE = 1
+    FREQ = 2
+    PULSE = 3
+    
+    def __str__(self):
+        if self == self.PAD:
+            return "Pad"
+        elif self == self.PHASE:
+            return "Phase"
+        elif self == self.FREQ:
+            return "Freq"
+        elif self == self.PULSE:
+            return "Pulse"
 
-    max_samp = 0
+def get_max_sample_count(instructions, channel=None):
+    '''Get the max sample count for either a specific channel or all channels (default)'''
 
-    # Find largest sample point
-    for chan, pulse in pulses.items():
-        last_chan_samp = pulse[-1][0]+len(pulse[-1][1])
-        max_samp = max(max_samp,last_chan_samp)
+    max_sample_count = 0
 
-    for chan in chans_to_pad:
-        if chan not in pulses.keys():
-            pulses[chan] = [[max_samp-1, np.array([0])]]
-        else:
-            if pulses[chan][-1][0]+len(pulse[-1][1]) < max_samp:
-                pulses[chan] = pulses[chan] + [[max_samp-1, np.array([0])]]
-        
-    return pulses
+    if channel is None:
+        for channel_instructions in instructions.values():
+            sample_count = 0
+            for t, data in channel_instructions:
+                if t is InstructionType.PULSE:
+                    sample_count += len(data)
+                elif t is InstructionType.PAD:
+                    sample_count += data
+            if sample_count > max_sample_count:
+                max_sample_count = sample_count
+    else:
+        channel_instructions = instructions[channel]
+        for t, data in channel_instructions:
+            if t is InstructionType.PULSE:
+                max_sample_count += len(data)
+    
+    return max_sample_count
 
+def qiskit_to_pulsemaker(qiskit_sch):
+    '''Translate qiskit-schedule to pulsemaker format'''
 
-# Function that pads schedule before a gate is applied
-'''
-NOTE: I Need to incorporate padding on self.pulse of only the channels that are part of in the gate being added. 
-      For this, I need to first identify the channels, pad them, and then continue to the qiskit to ScheduleDesigner 
-      translation. The way I am doing it right now is by incorporating this this pad_before_gate() function. 
-      There might be a more efficient way to do this inside the qiskit_to_schedviz() function.
-'''  
-def pad_before_gate(qiskit_sch, pulses, samples):
     try:
         from qiskit.pulse import Play, SetFrequency, ShiftPhase
         from qiskit.pulse.channels import DriveChannel, ControlChannel
 
     except ImportError:
-        pass    
-
-    gate_chans = []
-
-    for start_time, instruction in qiskit_sch.instructions:
-
-        if isinstance(instruction.channel, DriveChannel):
-            gate_chans.append('d'+str(instruction.channel.index))
-        elif isinstance(instruction.channel, ControlChannel):
-            gate_chans.append('u'+str(instruction.channel.index))
-        else:
-            '''TODO: Might need to add support for other channels, like measure, acquire, etc'''
-            pass
+        return {}
     
-    gate_chans = set(gate_chans)
-    pulses = pad_channels(pulses, gate_chans)
-
-    for chan, pulse in pulses.items():
-        samples[chan] = pulse[-1][0] + len(pulse[-1][1])
-
-    return pulses, samples
-    
-
-# Function to translate qiskit-schedule to scheduler-editor format    
-def qiskit_to_schedviz(qiskit_sch, current_samples):
-    try:
-        from qiskit.pulse import Play, SetFrequency, ShiftPhase
-        from qiskit.pulse.channels import DriveChannel, ControlChannel
-
-    except ImportError:
-        pass
-    
-    phases = {}
-    freqs = {}
-    pulses = {}
+    instructions = {}
 
     for start_time, instruction in qiskit_sch.instructions:
 
@@ -221,85 +205,72 @@ def qiskit_to_schedviz(qiskit_sch, current_samples):
             '''TODO: Might need to add support for other channels, like measure, acquire, etc'''
             pass
         
-        if chan in current_samples:
-            chan_sample = current_samples[chan]
-        else: 
-            chan_sample = 0
-
+        payload = None
         if isinstance(instruction, Play):
-            '''TODO: For Play instructions (pulses), 
-            Need to check that the last sample of each pulse matches the first sample of the next.
-            In general this could not be the case because eventually we will add "Delay" Instructions that could be 
-            padding the pulse data in between consecutive Play instructions, so would need to fill in that missing data.
-            From what I've seen, when building schedules from native gates, no Delay Instructions are used, but
-            this might change in the future'''
-            pulse = [chan_sample+start_time, np.array(instruction.pulse.samples)]
+            payload = (InstructionType.PULSE, np.array(instruction.pulse.get_waveform().samples))
             
-            if chan in pulses.keys():
-                pulses[chan] = pulses[chan] + [pulse]
-            else:
-                pulses[chan] = [pulse]
-
         elif isinstance(instruction, ShiftPhase):
-            phase = [chan_sample+start_time, instruction.phase]
+            payload = (InstructionType.PHASE, instruction.phase)
 
-            if chan in phases.keys():
-                phases[chan] = phases[chan] + [phase]       
-            else:
-                phases[chan] = [phase]
+        elif isinstance(instruction, SetFrequency):
+            payload = (InstructionType.FREQ, instruction.frequency)
 
-        '''TODO: isinstance(instruction, ShiftFrequency). 
-                 Haven't done it yet bc haven't seen this instruction in any of the native gates.'''
+        instructions[chan] = instructions.get(chan, []) + [payload]
 
-    return phases, freqs, pulses
+    return instructions
 
-def schedviz_to_qiskit(phases, freqs, pulses):
+def pulsemaker_to_qiskit(instructions):
+    '''Translate pulsemaker to qiskit-schedule format'''
+
     try:
         from qiskit import pulse
-        from qiskit.pulse import Schedule, Play, DriveChannel, ControlChannel, Waveform, ShiftPhase
+        from qiskit.pulse import Schedule, Play, DriveChannel, ControlChannel, Waveform, ShiftPhase, SetFrequency
     except ImportError:
-        pass
+        return Schedule()
 
     schedule = Schedule()
-
-    for c, p in phases.items():
+    for c, data in instructions.items():
         channel_type = c[0]
         channel_index = int(c[1:])
         if channel_type == 'd':
             channel = DriveChannel(channel_index)
         elif channel_type == 'u':
             channel = ControlChannel(channel_index)
-
-        for time, phase in p:
-            schedule |= ShiftPhase(phase, channel).shift(time)
-
-    '''TODO: Haven't implented frequency yet bc I haven't seen this instruction in any of the native gates.'''
-
-    for c, p in pulses.items():
-        channel_type = c[0]
-        channel_index = int(c[1:])
-        if channel_type == 'd':
-            channel = DriveChannel(channel_index)
-        elif channel_type == 'u':
-            channel = ControlChannel(channel_index)
-
-        for time, samples in p:
-            if len(samples) == 1:
-                continue
-
-            schedule |= Play(Waveform(samples), channel).shift(time)
+        
+        current_sample_count = 0
+        for type, payload in data:
+            if type == InstructionType.PULSE:
+                sample_count = len(payload)
+                if sample_count == 1:
+                    continue
+                schedule |= Play(Waveform(payload), channel).shift(current_sample_count)
+                current_sample_count += sample_count
+            elif type == InstructionType.PHASE:
+                schedule |= ShiftPhase(payload, channel).shift(current_sample_count)
+            elif type == InstructionType.FREQ:
+                schedule |= SetFrequency(payload, channel).shift(current_sample_count)
                     
     return schedule
 
 def simulate(qiskit_schedule, backend_name):
+    if qiskit_schedule.duration == 0:
+        return {'0': 1}
+    if backend_name == 'Armonk':
+        return run_with_measure(qiskit_schedule, backend_name, 2).get_counts()
+    else:
+        print("Only FakeArmonk is supported for simulation currently because other backends are too slow")
+        return {'0': 1}
+    
+def run_with_measure(qiskit_schedule, backend_name, meas_level=1):
     try:
         from qiskit import providers, assemble
-        from qiskit.pulse import DriveChannel
+        from qiskit.pulse import DriveChannel, SetFrequency
         from qiskit.pulse.macros import measure
-
+        from qiskit.result.result import Result
+        
         if qiskit_schedule.duration == 0:
-            return {'0': 1}
-        elif backend_name == 'Armonk':
+            return Result(backend_name, None, None, None, None, None)
+        if backend_name == 'Armonk':
             backend = get_qiskit_backend(backend_name)
             pulse_sim = providers.aer.PulseSimulator.from_backend(backend)
             pulse_qobj = assemble(qiskit_schedule, backend=pulse_sim)
@@ -307,35 +278,39 @@ def simulate(qiskit_schedule, backend_name):
             for channel in qiskit_schedule.channels:
                 if isinstance(channel, DriveChannel):
                     measure_qubits.append(channel.index)
+            frequency = None
+            for start_time, instruction in qiskit_schedule.instructions:
+                if isinstance(instruction, SetFrequency):
+                    frequency = {instruction.channel: instruction.frequency}
+                    break
+
+            def strip_frequencies(instruction):
+                if isinstance(instruction[1], SetFrequency):
+                    return False                
+                return True
+
+            # Setting frequences isn't supported on simulators, so instead we use `schedule_los` to set a single frequency
+            # and subsequently strip any SetFrequency instructions from the schedule.
+            qiskit_schedule = qiskit_schedule.filter(strip_frequencies)
             qiskit_schedule += measure(measure_qubits, pulse_sim) << qiskit_schedule.duration
-            pulse_qobj = assemble(qiskit_schedule, backend=pulse_sim)
+            pulse_qobj = assemble(qiskit_schedule, backend=pulse_sim, meas_level=meas_level, schedule_los=frequency)
             job = pulse_sim.run(pulse_qobj)
-            return job.result().get_counts()
+            return job.result()
         else:
             print("Only FakeArmonk is supported for simulation currently because other backends are too slow")
-            return {'0': 1}
+            return Result(backend_name, None, None, None, None, None)
     except ImportError:
         pass
 
-def plot_pulse_schedule(phases, freqs, pulses, samples):
-    # Function to draw/update schedule plot
-    def _plot(phases,freqs,pulses,samples):
+def plot_pulse_schedule(instructions):
+    '''Function to draw/update schedule plot'''
+    def _plot(instructions):        
+        sorted_instructions = instructions.copy()
         
-        # Check channels in phase and frequency dicts but not on pulse
-        # Create one-elem pulse array on those chans to avoid matplotlib error for missing data
-        phase_chans = set(phases.keys())
-        freq_chans = set(freqs.keys())
-        pulses_srt = pulses.copy()
-        
-        for chan in (set.union(phase_chans,freq_chans)):
-            if chan not in pulses_srt:
-                pulses_srt[chan]=[[0, np.array([0])]]
-
-
         labels = ['a','d','m','u'] # labels for different channels:
                                    # a: acquire, d: drive, m: measure, u: x-correlation
 
-        num_chans = max(len(pulses_srt), 1)
+        num_chans = max(len(sorted_instructions), 1)
         gs = gridspec.GridSpec(num_chans, 1)
         ax = []
 
@@ -346,17 +321,16 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
         by multiplying by the length of the 'labels' list, we know where the qubit sits wrt the others.
         by adding the two, we know where a given qubit channel should sit wrt to other channels.
         ''' 
-        pulses_srt = sorted(pulses_srt.items(), 
+        sorted_instructions = sorted(sorted_instructions.items(), 
                         key=lambda indx: (labels.index(indx[0][0])+int(indx[0][1])*len(labels)))
 
 
-        fig = plt.subplots(figsize=(12,5))
+        fig = plt.subplots(figsize=(9,5))        
 
-        for chan_num, chan in enumerate(pulses_srt):
-
-            # Plot pulses
+        for chan_num, chan_data in enumerate(sorted_instructions):
             if chan_num == 0:
                 ax.append(plt.subplot(gs[chan_num]))
+                ax[0].set_xlabel('Samples (t/dt)')
             else: 
                 ax.append(plt.subplot(gs[chan_num], sharex=ax[0]))
             if chan_num < num_chans - 1:
@@ -367,94 +341,58 @@ def plot_pulse_schedule(phases, freqs, pulses, samples):
             ax[chan_num].tick_params(axis='y', which='major', labelsize=7)
             #ax[chan_num].tick_params(axis="y",direction="in", pad=-22)
             #ax[chan_num].get_yaxis().set_ticks([])
-            ax[chan_num].set_ylabel(chan[0]+'  ', rotation=0, fontweight='bold')
+            ax[chan_num].set_ylabel(chan_data[0]+'  ', rotation=0, fontweight='bold')
 
-            # Construct real/imag signals to be plotted
-            pulses_lst = chan[1]
+            instructions = chan_data[1]
             current_plot_sample = 0
-            i_sig = np.array([])
-            q_sig = np.array([])
-            ''' 
-            TODO: Do we need to check if there is a pulse instruction element with a starting time that is lower than
-                      previous elements that have already been constructed? Is this a possible scenario? If so, we
-                      probably need to then sort all pulse elements by starting time to avoid this issue 
-            '''
             
-            for pulse in pulses_lst:
-                if pulse[0] > current_plot_sample:
-                    # Pad with zeros any gaps between instructions were end time and start time don't match
-                    i_sig = np.append(i_sig, np.zeros(pulse[0]-current_plot_sample))
-                    q_sig = np.append(q_sig, np.zeros(pulse[0]-current_plot_sample))
+            for t, data in instructions:
+                if t == InstructionType.PULSE or t == InstructionType.PAD:
+                    # Construct real/imag signals to be plotted
+                    if t == InstructionType.PAD:
+                        i_sig = np.zeros(data)
+                        q_sig = np.zeros(data)
+                    else:
+                        i_sig = np.real(data)
+                        q_sig = np.imag(data)
 
-                i_sig = np.append(i_sig,np.real(pulse[1]))
-                q_sig = np.append(q_sig,np.imag(pulse[1]))
+                    samps = i_sig.size
+                    t = current_plot_sample + np.linspace(0,samps,samps)
 
-                '''
-                ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
-                print('chan:',chan[0] ,'pulse start time:', pulse[0])
-                print('chan:',chan[0] ,'curr sample bf update', current_plot_sample)
-                '''
-                current_plot_sample = len(i_sig)
-                '''
-                ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
-                print('chan:',chan[0] ,'curr sample af update', current_plot_sample)
-                #####
-                '''
+                    if chan_data[0][0] == 'd':
+                        ax[chan_num].step(t, i_sig, 'r')
+                        ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
+                        ax[chan_num].step(t, q_sig, 'b')
+                        ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
+                    else:
+                        '''
+                        TODO: Here I'm using an else statement to display anything that isn't a drive 
+                            channel 'd' as if it was a control channel 'u'. If support for 'a' 'm' channels is added
+                            need to make this into an 'elif chan[0][0] == 'u':' and also change colors of those channels too
+                        '''
+                        ax[chan_num].step(t, i_sig, 'y')
+                        ax[chan_num].fill_between(t, i_sig, color='y', alpha=0.2, step='pre')
+                        ax[chan_num].step(t, q_sig, 'orange')
+                        ax[chan_num].fill_between(t, q_sig, color='orange', alpha=0.2, step='pre')
 
-            samps = i_sig.size
-            t = np.linspace(0,samps,samps)
+                    current_plot_sample += len(i_sig)
 
-            if chan[0][0] == 'd':
-                ax[chan_num].step(t, i_sig, 'r')
-                ax[chan_num].fill_between(t, i_sig, color='r', alpha=0.2, step='pre')
-                ax[chan_num].step(t, q_sig, 'b')
-                ax[chan_num].fill_between(t, q_sig, color='b', alpha=0.2, step='pre')
-            else:
-            #elif chan[0][0] == 'u': 
-                '''
-                TODO: Here I'm using an else statement to display anything that isn't a drive 
-                    channel 'd' as if it was a control channel 'u'. If support for 'a' 'm' channels is added
-                    need to make this into an 'elif chan[0][0] == 'u':' and also change colors of those channels too
-                '''
-                ax[chan_num].step(t, i_sig, 'y')
-                ax[chan_num].fill_between(t, i_sig, color='y', alpha=0.2, step='pre')
-                ax[chan_num].step(t, q_sig, 'orange')
-                ax[chan_num].fill_between(t, q_sig, color='orange', alpha=0.2, step='pre')
-
-            # plot phases
-            if chan[0] in phases:
-                phases_lst = phases[chan[0]]
-                for time in phases_lst:           
-                    ax[chan_num].text(x=time[0], y=0, s=r'$\circlearrowleft$',
+                elif InstructionType.PHASE:
+                    ax[chan_num].text(x=current_plot_sample, y=0, s=r'$\circlearrowleft$',
                                       fontsize=14, color='purple',
                                       ha='center', va='center')
 
-            # plot frequencies
-            if chan[0] in freqs:
-                freqs_lst = freqs[chan[0]]
-                for time in freqs_lst:
-                    ax[chan_num].text(x=time[0], y=0, s=r'$\downarrow$',
-                            fontsize=14, color='forestgreen',
-                            ha='center', va='bottom')
+                elif InstructionType.FREQ:
+                    ax[chan_num].text(x=current_plot_sample, y=0, s=r'$\downarrow$',
+                                      fontsize=14, color='forestgreen',
+                                      ha='center', va='bottom')
 
         plt.subplots_adjust(hspace=.0)
 
-        '''
-        ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
-        print('Phases:',phases)
-        print('Frequencies:',freqs)
-        print('Pulses:',pulses)
-        print('Samples:',samples)
-        ### ### ### ### ### ### ### ###
-        '''
-
-    return widgets.interactive(_plot,
-                              phases=widgets.fixed(phases),
-                              freqs=widgets.fixed(freqs),
-                              pulses=widgets.fixed(pulses),
-                              samples=widgets.fixed(samples))
+    return widgets.interactive(_plot, instructions=widgets.fixed(instructions))
 
 from qiskit.pulse import Schedule
+from qiskit.result.result import Result
 class ScheduleDesigner(widgets.VBox):
     class AppendType(IntEnum):
         GATE = 0
@@ -475,36 +413,43 @@ class ScheduleDesigner(widgets.VBox):
             elif self == self.CIRCUIT:
                 return "From Circuit"
             
-    pulses = traitlets.Dict()
-    phases = traitlets.Dict()
-    freqs = traitlets.Dict()
     schedule = traitlets.Instance(Schedule)
+    result = traitlets.Instance(Result)
     circuit_qasm = traitlets.Unicode()
         
     def __init__(self):
 
-        ### Initialize ###        
-        self.pulses = {}           # Dictionary of pulses. 
-                                   #  Format: {d0:waveform00, u0:waveform01, d1:waveform11, ...} waveformx is a list with [time,wf] elems
-                                   #  time is the starting time of the pulse "chunk", wf is a numpy array with the pulse data
-        self.phases = {}           # Dictionary of phase-shift values. 
-                                   #  Format: {d0:phaseshift00, u0:phaseshift01, d1:phaseshift11 ...} phaseshiftx is a list with [time,phase] elems
-        self.freqs = {}            # Dictionary of frequency values. 
-                                   #  Format: {d0:freqval00, u0:freqval01, d1:freqval11, ...} freqvalx is a list with [time,phase] elems
-        self.samples = {}          # Dictionary of samples in schedule
-                                   #  Format: {d0:sampsval00, u0:samps01, d1:samps11, ...} sampsvalx is the value of last sample on channel x
+        ### Initialize ###  
+        self.instructions = {}     # Dictionary of instructions (i.e. pulses, phases, and frequencies)
+                                   #  Format: {d0:instructions_d0, u0:instructions_01, d1:instructions_d1, ...} 
+                                   #    instructions_xx is a list of (InstructionType, data) tuples
+                                   #    data is either a numpy array for pulse data, a phase, or a frequency value
         self.custom_pulse  = []    # Custom pulse
-                                   #  Format: list of samples with [time, wf] elems
+                                   #  Format: numpy array with the pulse data
         
         self._current_qubits = ['q0','q0']      # qubit(s) currently selected. If a single-qubit gate is selected, then 
                                                 # both elements in the list take the same value ['qx','qx'] (qx is currently selecte qubit)
                                                 # If two-qubit gate (CX) is selected: ['qx','qy'] where CX is applied from qx to qy.
-        self._current_chann = 'd0'              # list of current channel selections for phase,freq,pulse based on selected op type
-        self._current_phase = 0
-        self._current_freq = 0
-        self._current_pulse = np.array([])
 
-        self.schedule = Schedule()                 # Final schedule (currently will use Qiskit's data structuring) 
+        self.schedule = Schedule()  # Final schedule (currently will use Qiskit's data structuring) 
+        
+        self.edit_item = None       # Editing mode of an existing instruction
+        phase_multiplier = 2*np.pi
+        freq_multiplier = 1e9
+
+        def get_collated_schedule():
+            '''combined list of pulse schedule in format (w/o payload): (time, channel, type)'''
+            schedule = []        
+            for channel, data in self.instructions.items():
+                sample_count = 0
+                for i, (type, payload) in enumerate(data):
+                    schedule += [(i, sample_count, channel, type)]
+                    if type == InstructionType.PULSE:
+                        sample_count += len(payload)
+                    elif type == InstructionType.PAD:
+                        sample_count += payload
+            schedule.sort(key=lambda x: x[0])
+            return schedule
 
         backend_input_lst = ['Armonk', 'Almaden', 'Athens', 'Casablanca']
         backend_qnum_lst = [1, 20, 5, 7]
@@ -524,10 +469,17 @@ class ScheduleDesigner(widgets.VBox):
 
         # Dropdown menu for backend
         backend_input_dd = widgets.Dropdown(options=backend_input_lst, 
-                                            layout=widgets.Layout(width='auto'),
+                                            layout=widgets.Layout(width='100px'),
                                             continuous_update=False,
                                             disabled=False)
         
+        backend_autosim = widgets.Checkbox(value=False,
+                                           description='',
+                                           layout=widgets.Layout(width='100px', align_self='flex-start'),
+                                           disabled=False)
+        backend_autosim.style.description_width = "0"
+        self._backend_autosim = backend_autosim
+
         # Dropdown menu for native gate selection
         nativegate_input_dd = widgets.Dropdown(options=nativegate_input_lst[0:len(nativegate_input_lst)-1], 
                                                layout=widgets.Layout(width='160px'),
@@ -541,10 +493,14 @@ class ScheduleDesigner(widgets.VBox):
                                                            disabled=False)
 
         # Floating Textbox for Frequency value input
-        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.75, min=4.0, max=5.5, step=0.001,
+        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.0, min=4.0, max=5.5, step=0.001,
                                                           layout=widgets.Layout(width='160px'),
                                                           disabled=False)
         
+        apply_btn = widgets.Button(description='Apply',
+                                              layout=widgets.Layout(width='80px'),
+                                              disabled=False)
+
         # Dropdown menu for channel selection to append to schedule
         append_to_dd = widgets.Dropdown(options=self._backend_chan_lst, 
                                              layout=widgets.Layout(width='160px'),
@@ -572,10 +528,16 @@ class ScheduleDesigner(widgets.VBox):
                 append_input_panel.children = [nativegate_input_dd]
                 append_to_dd.options = self._backend_qubit_lst
             elif append_type == self.AppendType.PHASE:
-                append_input_panel.children = [shiftphase_input_fltxt]
+                if self.edit_item and self.edit_item[0] == InstructionType.PHASE:
+                    append_input_panel.children = [shiftphase_input_fltxt, apply_btn]
+                else:
+                    append_input_panel.children = [shiftphase_input_fltxt]
                 append_to_dd.options = self._backend_chan_lst
             elif append_type == self.AppendType.FREQ:
-                append_input_panel.children = [shiftfreq_input_fltxt]
+                if self.edit_item and self.edit_item[0] == InstructionType.FREQ:
+                    append_input_panel.children = [shiftfreq_input_fltxt, apply_btn]
+                else:                    
+                    append_input_panel.children = [shiftfreq_input_fltxt]
                 append_to_dd.options = self._backend_chan_lst            
             elif append_type == self.AppendType.PULSE:
                 append_input_panel.children = []
@@ -588,28 +550,46 @@ class ScheduleDesigner(widgets.VBox):
 
         append_type_select = widgets.ToggleButtons(
             options=list(self.AppendType),
-           layout=widgets.Layout(width='max-content', display='flex', flex='1 0 auto'), # If the items' names are long
+#             layout=widgets.Layout(width='max-content', display='flex', flex='1 0 auto'), # If the items' names are long
         )
-        append_type_select.observe(toggle_append_type, names='value');
+        append_type_select.style.button_width = "100px"
+        append_type_select.observe(toggle_append_type, names='value')
+        # NOTE: Another option than the code below is to cycle the .value to trigger a call
         toggle_append_type({'new': append_type_select.value, 'owner': append_type_select}) # call it once to initialize
                 
         append_panel = widgets.VBox([append_type_select,
                                      append_input_panel])
                                            
         # Combines all dropdown menus in a left panel
-        input_panel = widgets.HBox([widgets.VBox([widgets.Label("Backend:"), backend_input_dd]), append_panel],
-                                                 layout=widgets.Layout(justify_content='space-between'))
+        input_panel = widgets.HBox([widgets.VBox([
+                                                widgets.HBox([widgets.Label("Backend:"), backend_input_dd]), 
+                                                widgets.HBox([widgets.Label("Auto-run:"), backend_autosim])],
+                                                layout=widgets.Layout(justify_content='flex-start')),
+                                            append_panel],
+                                            layout=widgets.Layout(justify_content='space-between'))
         
         ### Widget Interactions ###
         
+        def update_schedule():
+            schedule = get_collated_schedule()
+            if hasattr(self, '_schedule_list'):
+                index = self._schedule_list.index
+                self._schedule_list.options = [f"{channel}: {instruction}" for (index, time, channel, instruction) in schedule]
+                if index is not None and len(self._schedule_list.options) > 0:
+                    self._schedule_list.index = min(len(self._schedule_list.options) - 1, index)
+
+            self.schedule = pulsemaker_to_qiskit(self.instructions)
+            
+            if self._backend_autosim.value == True:
+                self.result = run_with_measure(self.schedule, self._current_backend)
+
+            self.update()
+
         # Clear schedule
         def clear_data(*args):
-            self.pulses.clear()    
-            self.phases.clear()        
-            self.freqs.clear()        
-            self.samples.clear()
+            self.instructions.clear()
             self.schedule = Schedule()
-            self.update()
+            update_schedule()
 
         clear_btn = widgets.Button(description='Clear', layout=widgets.Layout(align_self='flex-start', width='auto', height='auto'))
         clear_btn.on_click(clear_data)
@@ -643,13 +623,18 @@ class ScheduleDesigner(widgets.VBox):
         backend_input_dd.observe(update_dd_options, 'value')          
         update_dd_options({'new': backend_input_dd.value, 'owner': backend_input_dd}) # call it once to initialize
 
-        # Update Schedule when append button is pressed
-        def update_schedule(*args):
-            '''NOTE: Not sure if I need _current_phase, _current_freq or if I should just use 
-                     the values from the widgets directly:'''
-            self._current_phase = 2*np.pi*shiftphase_input_fltxt.value
-            self._current_freq = 1e9*shiftfreq_input_fltxt.value
+        def append_to_schedule(*args):
+            def pad_to_max_sample():
+                max_sample_count = get_max_sample_count(self.instructions)
+                for chan in self.instructions.keys():
+                    channel_max_sample_count = get_max_sample_count(self.instructions, chan)
+                    if channel_max_sample_count < max_sample_count:
+                        self.instructions[chan] += [InstructionType.PAD, max_sample_count - channel_max_sample_count]
 
+            current_chan = append_to_dd.value
+            current_phase = phase_multiplier * shiftphase_input_fltxt.value
+            current_freq = freq_multiplier * shiftfreq_input_fltxt.value
+            
             append_type = append_type_select.options.index(append_type_select.value)
                         
             if append_type == self.AppendType.GATE:
@@ -662,180 +647,65 @@ class ScheduleDesigner(widgets.VBox):
                 qiskit_gate_sch = qiskit_gate_to_sched(backend_input_dd.value, nativegate_input_dd.value, self._current_qubits, num_qbs)
 
                 # Pad before gate is applied
-                if self.pulses:
-                    self.pulses, self.samples = pad_before_gate(qiskit_gate_sch, self.pulses, self.samples)
+                pad_to_max_sample()
 
-                phases, freqs, pulses = qiskit_to_schedviz(qiskit_gate_sch, self.samples)
+                instructions = qiskit_to_pulsemaker(qiskit_gate_sch)
 
-                # Channels to be padded
-                gate_chans = set.union(set(phases.keys()),set(freqs.keys()),set(pulses.keys()))
-
-                # Pad after gate sch is appened to full schedule
-                if pulses:
-                    pulses = pad_channels(pulses, gate_chans)
-
-                for chan, pulse in pulses.items():
-                    if chan in self.pulses.keys():
-                        # Check if channel is already present in pulses to append new data
-                        # Else, add channel to pulses.
-                        self.pulses[chan] = self.pulses[chan] + pulse
-                    else:
-                        self.pulses[chan] = pulse
-
-                    # Calculate last sample by taking the last pulse item for a given channel (pulse[-1]), and adding the start time 
-                    # pulse[-1][0] with the length of that last pulse array len(pulse[-1][1]).
-                    self.samples[chan] = pulse[-1][0] + len(pulse[-1][1])
-
-                    '''
-                    ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
-                    print('chan:',chan, 'start time of last pulse elem:', pulse[-1][0])
-                    print('chan:',chan, 'length of last pulse elem', len(pulse[-1][1]))
-                    print('chan:',chan, 'sample is self.sample', self.samples[chan])
-                    #####
-                    '''
-
-                for chan, phase in phases.items():
-                    if chan in self.phases.keys():
-                        # Check if channel is already present in phases to append new data
-                        # Else, add channel to pulses.
-                        '''TODO: Need to be careful here. Gotta check if there is phaseshift overlap bw last elem in self.phases
-                                 and the first elem being appended from the native gate to. The new one should replace old one'''
-                        self.phases[chan] = self.phases[chan] + phase
-                    else:
-                        self.phases[chan] = phase
-
-                '''NOTE: Don't have a for loop for freq.items() here bc pulses from native gates in qiskit don't contain
-                         that type of instruction. Might need to add later for other backends?'''
+                for chan in instructions.keys():
+                    self.instructions[chan] = self.instructions.get(chan, []) + instructions[chan]
+                
+                # Pad after gate schedule is appended to full schedule
+                pad_to_max_sample()
 
             elif append_type == self.AppendType.PHASE:
-                if self._current_chann in self.samples.keys():
-                    current_sample = self.samples[self._current_chann]
-                else:
-                    current_sample = 0
+                # Check if the last phase that was set is the same phase
+                same_phase = False
+                for type, data in reversed(self.instructions):
+                    if type == InstructionType.PHASE:
+                        if data == current_phase:
+                            same_phase = True
+                        break
 
-                phase = [current_sample, self._current_phase]
-
-                if self._current_chann in self.phases.keys():
-                    # Check if channel is already present in phases to append/replace new data
-                    # Else, add channel to phases.
-
-                    phase_array = self.phases[self._current_chann]
-
-                    if phase_array[-1][0] == current_sample:
-                        # If sample number hasn't changed, replace PhaseShift value
-                        # Else, append new [time,PhaseShift] item to phases
-                        phase_array[-1] = phase
-                    else:
-                        phase_array += [phase]
-                else:
-                    phase_array = [phase]
-
-                self.phases[self._current_chann] = phase_array
+                if not same_phase:
+                    phase = (InstructionType.PHASE, current_phase)
+                    self.instructions[current_chan] = self.instructions.get(current_chan, []) + [phase]
 
             elif append_type == self.AppendType.FREQ:
-                if self._current_chann in self.samples.keys():
-                    current_sample = self.samples[self._current_chann]
-                else:
-                    current_sample = 0
+                # Check if the last frequency that was set is the same frequency
+                same_freq = False
+                for type, payload in reversed(self.instructions):
+                    if type == InstructionType.FREQ:
+                        if payload == current_freq:
+                            same_freq = True
+                        break
 
-                freq = [current_sample, self._current_freq]
-
-                if self._current_chann in self.freqs.keys():
-                    # Check if channel is already present in freqs to append/replace new data
-                    # Else, add channel to freqs.
-                    freq_array = self.freqs[self._current_chann]
-
-                    if freq_array[-1][0] == current_sample:
-                        # If sample number hasn't changed, replace Frequency value
-                        # Else, append new [time,FreqValue] item to freqs
-                        freq_array[-1] = freq
-                    else:
-                        freq_array += [freq]
-                else:
-                    freq_array = [freq]
-
-                self.freqs[self._current_chann] = freq_array
+                if not same_freq:
+                    freq = (InstructionType.FREQ, current_freq)
+                    self.instructions[current_chan] = self.instructions.get(current_chan, []) + [freq]
 
             elif append_type == self.AppendType.PULSE:
-                '''
-                TODO: Need to add padding option (add dotted line of where schedule stands on each channel?)
-                      Best way might be to add padding for visualization in the plot_sch function, but keep
-                      arrays for each channel true to what the user is adding. The challenge is then keeping
-                      track of the "current_sample" for each channel individually, but might be as simple as
-                      always checking the length of the pulse array for each specific chan.
-                '''
-                if self._current_chann in self.samples.keys():
-                    # Check if channel is already present in samples to extract current sample
-                    # Else, current sample is 0.
-                    current_sample = self.samples[self._current_chann]
-                else:
-                    current_sample = 0
-
                 current_pulse = self.custom_pulse
-                pulse = [current_sample, current_pulse]
+                pulse = (InstructionType.PULSE, current_pulse)
+                self.instructions[current_chan] = self.instructions.get(current_chan, []) + [pulse]
 
-                if self._current_chann in self.pulses.keys():
-                    # Check if channel is already present in pulses to append new data
-                    # Else, add channel to pulses.
-                    pulse_array = self.pulses[self._current_chann] + [pulse]
-                else:
-                    pulse_array = [pulse]
-
-                self.pulses[self._current_chann] = pulse_array
-                
-                # Update the channel time offset based on the length of the pulse being added
-                self.samples[self._current_chann] = pulse_array[-1][0] + len(pulse_array[-1][1])
             elif append_type == self.AppendType.CIRCUIT:
                 clear_data(*args)
                 qiskit_gate_sch = qiskit_circuit_qasm_to_sched(self._current_backend, self.circuit_qasm)
-                phases, freqs, pulses = qiskit_to_schedviz(qiskit_gate_sch, self.samples)
-                for chan, pulse in pulses.items():
-                    if chan in self.pulses.keys():
-                        # Append if pulses already exist for a channel
-                        self.pulses[chan] = self.pulses[chan] + pulse
-                    else:
-                        self.pulses[chan] = pulse
-
-                    # Update the channel time offset based on the length of the pulse being added
-                    self.samples[chan] = pulse[-1][0] + len(pulse[-1][1])
-
-                    '''
-                    ### NOTE: DELETE BELOW. JUST FOR DEBUGGING ###
-                    print('chan:',chan, 'start time of last pulse elem:', pulse[-1][0])
-                    print('chan:',chan, 'length of last pulse elem', len(pulse[-1][1]))
-                    print('chan:',chan, 'sample is self.sample', self.samples[chan])
-                    #####
-                    '''
-
-                for chan, phase in phases.items():
-                    if chan in self.phases.keys():
-                        # Append if phases already exist for a channel                        
-                        self.phases[chan] = self.phases[chan] + phase
-                    else:
-                        self.phases[chan] = phase
-
-                '''NOTE: Don't have a for loop for freq.items() here bc pulses from native gates in qiskit don't contain
-                         that type of instruction. Might need to add later for other backends?'''                
-
-            self.schedule = schedviz_to_qiskit(self.phases, self.freqs, self.pulses)
-            self.update()
-
-        append_to_btn.on_click(update_schedule)
+                instructions = qiskit_to_pulsemaker(qiskit_gate_sch)
+                for chan in instructions.keys():
+                    self.instructions[chan] = self.instructions.get(chan, []) + instructions[chan]
+            
+            update_schedule()
+                
+        append_to_btn.on_click(append_to_schedule)
         
         '''
-        NOTE: Don't know if I really need the update_channels() and update_qubits() functions. I might be OK just working with
+        NOTE: Don't know if I really need the update_qubits() functions. I might be OK just working with
               the .value items of each widget instead of saving them in the self._current_chann & self._current_qbuit lists.
               In particular, the update_qubits function might be redundant. Could do the same inside the qiskit_gate_to_sched() function
               by just passing append_to_dd.value directly.
               Only reason to have them might be to support backends from other companies? (e.g. Rigetti)
         '''
-
-        # Update current channel based on values of dropdown menus
-        def update_channel(*args):
-            self._current_chann = append_to_dd.value
-
-        append_to_dd.observe(update_channel, 'value')
-
         # Update self._current_qubits based on value of the dropdown menu
         def update_curr_qubits(*args):
             append_type = append_type_select.options.index(append_type_select.value)
@@ -861,18 +731,147 @@ class ScheduleDesigner(widgets.VBox):
 
         nativegate_input_dd.observe(update_dd_qubits, 'value')
 
+        def select_schedule_item(button):
+            schedule = get_collated_schedule()
+            index = self._schedule_list.index
+            if index is None:
+                schedule_item_edit_btn.disabled = True
+                return
+
+            (item_index, time, channel, type) = schedule[index]
+
+            if not (type == InstructionType.PHASE or type == InstructionType.FREQ):
+                self.edit_item = None
+                schedule_item_edit_btn.disabled = True
+            else:
+                schedule_item_edit_btn.disabled = False
+
+        def edit_schedule_item(button):
+            schedule = get_collated_schedule()
+            index = self._schedule_list.index
+            (item_index, time, channel, type) = schedule[index]
+
+            instructions = self.instructions[channel]
+            edit_item = instructions[item_index]
+            if self.edit_item == edit_item:
+                self.edit_item = None
+                append_type = append_type_select.value                    
+                append_type_select.value = 0 # set to something else to force a refresh
+                append_type_select.value = append_type                                        
+            else:
+                self.edit_item = edit_item
+                if type == InstructionType.PHASE:
+                    append_type_select.value = 0 # set to something else to force a refresh
+                    append_type_select.value = self.AppendType.PHASE
+                    shiftphase_input_fltxt.value = self.edit_item[1] / phase_multiplier
+                elif type == InstructionType.FREQ:
+                    append_type_select.value = 0 # set to something else to force a refresh
+                    append_type_select.value = self.AppendType.FREQ
+                    shiftfreq_input_fltxt.value = self.edit_item[1] / freq_multiplier
+                    
+        def on_freq_updated(change):
+            # Auto-update value when autosim is turned on
+            if self._backend_autosim.value == True and self.edit_item:
+                update_edited_item(apply_btn)
+        shiftfreq_input_fltxt.observe(on_freq_updated)
+
+        def update_edited_item(button):
+            edit_item = self.edit_item
+            if edit_item:
+                type = edit_item[0]
+                index = -1
+                instructions = None
+                for channel, data in self.instructions.items():
+                    item_index = data.index(edit_item)
+                    if item_index >= 0:
+                        index = item_index
+                        instructions = self.instructions[channel]
+                        break
+
+                if index >= 0:
+                    if type == InstructionType.PHASE:
+                        payload = (InstructionType.PHASE, phase_multiplier * shiftphase_input_fltxt.value)
+                    elif type == InstructionType.FREQ:                
+                        payload = (InstructionType.FREQ, freq_multiplier * shiftfreq_input_fltxt.value)
+
+                    instructions[index] = payload
+                    self.edit_item = payload
+            update_schedule()
+
+        def delete_schedule_item(*args):
+            schedule = get_collated_schedule()
+            index = self._schedule_list.index
+            (item_index, time, channel, type) = schedule[index]
+  
+            instructions = self.instructions[channel]
+            del instructions[item_index]
+
+            if len(instructions) == 0:
+                del self.instructions[channel]
+
+            del schedule[index]
+            update_schedule()
+
+        def move_schedule_item(button):
+            up = button.tooltip == "Up"
+
+            schedule = get_collated_schedule()
+            index = self._schedule_list.index            
+            (item_index, time, channel, type) = schedule[index]
+
+            instructions = self.instructions[channel]
+            if up and item_index - 1 >= 0:
+                previous = instructions[item_index - 1]
+                instructions[item_index - 1] = instructions[item_index]
+                instructions[item_index] = previous
+            elif not up and item_index + 1 < len(instructions):
+                next = instructions[item_index + 1]
+                instructions[item_index + 1] = instructions[item_index]
+                instructions[item_index] = next
+
+            if up:
+                self._schedule_list.index = max(index - 1, 0)
+            else:
+                self._schedule_list.index = min(index + 1, len(self._schedule_list.options) - 1)                
+            update_schedule()
+
+        apply_btn.on_click(update_edited_item)
+
+        self._schedule_list = widgets.Select(
+            description='',
+            disabled=False,
+            layout=widgets.Layout(width='100px', align_items='stretch')
+        )        
+        self._schedule_list.observe(select_schedule_item, names='value')
+        schedule_item_edit_btn = widgets.Button(description='📝', tooltip='Edit', layout=widgets.Layout(width='40px'))
+        schedule_item_up_btn = widgets.Button(description='🔼', tooltip='Up', layout=widgets.Layout(width='40px'))
+        schedule_item_down_btn = widgets.Button(description='🔽', tooltip='Down', layout=widgets.Layout(width='40px'))
+        schedule_item_del_btn = widgets.Button(description='❌', layout=widgets.Layout(width='40px'))
+        schedule_item_edit_btn.on_click(edit_schedule_item)
+        schedule_item_up_btn.on_click(move_schedule_item)
+        schedule_item_down_btn.on_click(move_schedule_item)
+        schedule_item_del_btn.on_click(delete_schedule_item)
+        
         # Plot schedule when outputs change
-        self._plot = plot_pulse_schedule(self.phases, self.freqs, self.pulses, self.samples)
-        self._plot_panel = widgets.HBox([self._plot]) # allow for extending
+        self._plot = plot_pulse_schedule(self.instructions)
+        self._plot_panel = widgets.HBox([self._plot, self._schedule_list, 
+                                widgets.VBox([schedule_item_edit_btn,
+                                              schedule_item_up_btn, 
+                                              schedule_item_down_btn, 
+                                              schedule_item_del_btn])]) # allow for extending
 
         schedule_editor = widgets.VBox([input_panel, 
                                         widgets.HBox([widgets.Label("Schedule:"), clear_btn, widgets.HBox(layout=widgets.Layout(flex='1 0 auto')),
                                                       widgets.HBox([append_to_dd, append_to_btn], layout=widgets.Layout(align_self='flex-end'))],
                                                     layout=widgets.Layout(justify_content='space-between')),
                                         self._plot_panel])
-        super().__init__([schedule_editor], layout=widgets.Layout(width='1000px'))
+        super().__init__([schedule_editor], layout=widgets.Layout(width='900px'))
 
         self._editor = schedule_editor
+        
+    # Helper method to link PulseDesigner with ScheduleDesigner
+    def update_custom_pulse(self, change):
+        self.custom_pulse = change['new']
     
     def update(self):
         if hasattr(self, '_plot'):

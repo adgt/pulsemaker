@@ -3,7 +3,7 @@
 
 Pulsemaker is a Python widget library for designing pulses and pulse schedules for quantum computing hardware. The library can be used in Jupyter notebooks, JupyterLab, and the IPython kernel.
 
-Currently, the export feature only supports IBM's [Qiskit Pulse](https://qiskit.org/documentation/apidoc/pulse.html), but Rigetti's [Quil-T](https://pyquil-docs.rigetti.com/en/stable/quilt.html) will be supported in the future. Compatibility with other quantum hardware platforms, such as Pasqal's [Pulser](https://github.com/pasqal-io/Pulser) is also being considered.
+Currently, the export feature only supports IBM's [Qiskit Pulse](https://qiskit.org/documentation/apidoc/pulse.html), but Rigetti's [Quil-T](https://pyquil-docs.rigetti.com/en/stable/quilt.html) and Pasqal's [Pulser](https://github.com/pasqal-io/Pulser) can be considered if there is enough interest.
 
 To see a workflow that combines both the `PulseDesigner` and the `ScheduleDesigner` into a single dashboard, check out [qonduit](https://github.com/adgt/qonduit).
 
@@ -15,13 +15,11 @@ To see a workflow that combines both the `PulseDesigner` and the `ScheduleDesign
 ## Getting Started
 ### Installation
 
-Tested with JupyterLab 2, so may not work in JupyterLab 3 just yet.
-
-To install use pip:
+To install use pip (JupyterLab 3 recommended):
 
     $ pip install pulsemaker
 
-For a development installation (requires [Node.js](https://nodejs.org) and [Yarn version 1](https://classic.yarnpkg.com/)),
+For a development installation,
 
     $ git clone https://github.com/adgt/pulsemaker.git
     $ cd pulsemaker
