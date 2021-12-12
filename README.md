@@ -25,11 +25,13 @@ For a development installation,
     $ cd pulsemaker
     $ pip install -e .
 
-### Tutorials
+### Tutorials / Labs
 
 For a tutorial on how to use the `PulseDesigner` take a look at [Tutorial_PulseDesigner.ipynb](https://nbviewer.jupyter.org/github/adgt/pulseMaker/blob/main/Tutorial_PulseDesigner.ipynb).
 
 For a tutorial on how to use the `ScheduleDesigner` take a look at [Tutorial_ScheduleDesigner.ipynb](https://nbviewer.jupyter.org/github/adgt/pulseMaker/blob/main/Tutorial_ScheduleDesigner.ipynb)
+
+For a fun experience utilizing both components together, try out the [Frequency Sweep lab](Lab_Frequency_Sweep.ipynb).
 
 Otherwise, you can simply run:
 ```python
