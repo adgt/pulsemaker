@@ -289,9 +289,9 @@ def run_with_measure(qiskit_schedule, backend_name, meas_level=1):
                     return False                
                 return True
 
-            print(qiskit_schedule)
+            # Setting frequences isn't supported on simulators, so instead we use `schedule_los` to set a single frequency
+            # and subsequently strip any SetFrequency instructions from the schedule.
             qiskit_schedule = qiskit_schedule.filter(strip_frequencies)
-            print(qiskit_schedule)
             qiskit_schedule += measure(measure_qubits, pulse_sim) << qiskit_schedule.duration
             pulse_qobj = assemble(qiskit_schedule, backend=pulse_sim, meas_level=meas_level, schedule_los=frequency)
             job = pulse_sim.run(pulse_qobj)
@@ -496,7 +496,7 @@ class ScheduleDesigner(widgets.VBox):
         shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.75, min=4.0, max=5.5, step=0.001,
                                                           layout=widgets.Layout(width='160px'),
                                                           disabled=False)
-
+        
         apply_btn = widgets.Button(description='Apply',
                                               layout=widgets.Layout(width='80px'),
                                               disabled=False)
@@ -563,7 +563,7 @@ class ScheduleDesigner(widgets.VBox):
         # Combines all dropdown menus in a left panel
         input_panel = widgets.HBox([widgets.VBox([
                                                 widgets.HBox([widgets.Label("Backend:"), backend_input_dd]), 
-                                                widgets.HBox([widgets.Label("Auto-simulate:"), backend_autosim])],
+                                                widgets.HBox([widgets.Label("Auto-run:"), backend_autosim])],
                                                 layout=widgets.Layout(justify_content='flex-start')),
                                             append_panel],
                                             layout=widgets.Layout(justify_content='space-between'))
@@ -768,6 +768,12 @@ class ScheduleDesigner(widgets.VBox):
                     append_type_select.value = 0 # set to something else to force a refresh
                     append_type_select.value = self.AppendType.FREQ
                     shiftfreq_input_fltxt.value = self.edit_item[1] / freq_multiplier
+                    
+        def on_freq_updated(change):
+            # Auto-update value when autosim is turned on
+            if self._backend_autosim.value == True and self.edit_item:
+                update_edited_item(apply_btn)
+        shiftfreq_input_fltxt.observe(on_freq_updated)
 
         def update_edited_item(button):
             edit_item = self.edit_item
