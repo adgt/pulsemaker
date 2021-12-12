@@ -121,9 +121,9 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
         '''TO DO: Find out what samples and amplitude resolution is for each backend'''
         self.amp_res_val = 0.01 # Amplitude resolution
 #         self.samples_val = 1000  # Number of initial samples
-        self.amp_val = 0.05
-        self.samples_val = 2704
-        self.sigma_val = 336
+        self.amp_val = 1
+        self.samples_val = 2700
+        self.sigma_val = 100
 
         self.drag_links = []
 
@@ -152,7 +152,7 @@ class PulseDesigner(widgets.VBox, traitlets.HasTraits):
         self.i_sigma_sldr = widgets.IntSlider(
             value=self.sigma_val, 
             description='Sigma', 
-            min=1, max=max(100,self.sigma_val), step=1,
+            min=1, max=max(1000,self.sigma_val), step=1,
             continuous_update=False
         )
 

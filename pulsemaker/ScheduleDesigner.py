@@ -493,7 +493,7 @@ class ScheduleDesigner(widgets.VBox):
                                                            disabled=False)
 
         # Floating Textbox for Frequency value input
-        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.75, min=4.0, max=5.5, step=0.001,
+        shiftfreq_input_fltxt = widgets.BoundedFloatText(value=4.0, min=4.0, max=5.5, step=0.001,
                                                           layout=widgets.Layout(width='160px'),
                                                           disabled=False)
         
